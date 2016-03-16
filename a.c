@@ -12,8 +12,11 @@ int main() {
 				"no query string: check web server configuration\n");
 		}
 		FCGX_FPrintF(out, "Query: '%s'\n", q);
-		if (strcmp(q, "kancut")) {
+		if (strcmp(q, "kancut") == 0) {
 			FCGX_FPrintF(out, "Belel\n");		
+		}
+		else if (strcmp(q, "html") == 0) {
+			FCGX_FPrintF(out, "<html><h2>HTML</h2></html>");
 		}
 	}
 	return 0;
