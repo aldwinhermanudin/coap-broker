@@ -19,11 +19,11 @@ int main(int argc, char *argv[])
      int sockfd, newsockfd, portno;
      socklen_t clilen;
      char buffer[256];
-     struct sockaddr_in serv_addr, cli_addr;
+     struct sockaddr_ieee802154 serv_addr, cli_addr;
      int n;
      
      char *some_addr;
-     char str[INET6_ADDRSTRLEN];
+     char str[IEEE802154_ADDR_LEN];
      /*if (argc < 2) {
          fprintf(stderr,"ERROR, no port provided\n");
          exit(1);
@@ -37,8 +37,8 @@ int main(int argc, char *argv[])
      bzero((char *) &serv_addr, sizeof(serv_addr));
      portno = atoi(argv[1]);
      serv_addr.sin_family = PF_IEEE802154;
-     serv_addr.sin_addr.s_addr = INADDR_ANY;
-     serv_addr.sin_port = htons(portno);
+     serv_addr.addr.short_addr = INADDR_ANY;
+     //serv_addr.sin_port = htons(portno);
      if (bind(sockfd, (struct sockaddr *) &serv_addr,
               sizeof(serv_addr)) < 0) 
               error("ERROR on binding");
