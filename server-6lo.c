@@ -23,6 +23,7 @@ int main(int argc, char *argv[])
      int n;
      
      char *some_addr;
+     char str[INET6_ADDRSTRLEN];
      /*if (argc < 2) {
          fprintf(stderr,"ERROR, no port provided\n");
          exit(1);
@@ -41,9 +42,14 @@ int main(int argc, char *argv[])
      if (bind(sockfd, (struct sockaddr *) &serv_addr,
               sizeof(serv_addr)) < 0) 
               error("ERROR on binding");
-     
-     some_addr = inet_ntoa(serv_addr.sin_addr); // return the IP
-	 printf("%s\n", some_addr); // prints "10.0.0.1"
+     else 
+		printf("2: Binding succeeds\n");
+		
+
+	// now get it back and print it
+	inet_ntop(PF_IEEE802154, &(serv_addr.sin_addr), str, INET6_ADDRSTRLEN);
+
+	printf("%s\n", str); // prints "2001:db8:8714:3a90::12"
      /*
      listen(sockfd,5);
      clilen = sizeof(cli_addr);
