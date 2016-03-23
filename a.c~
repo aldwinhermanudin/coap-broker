@@ -16,7 +16,7 @@ int main() {
 			FCGX_FPrintF(out, "Belel\n");		
 		}
 		else if (strcmp(q, "html") == 0) {
-			FCGX_FPrintF(out, "<html><h2>HTML</h2></html>");
+			FCGX_FPrintF(out, "<html>\n<head>\n<h2>HTML</h2>\n</html>\n");
 		}
 	}
 	return 0;
