@@ -21,6 +21,8 @@ int main(int argc, char *argv[])
      char buffer[256];
      struct sockaddr_in serv_addr, cli_addr;
      int n;
+     
+     char *some_addr;
      /*if (argc < 2) {
          fprintf(stderr,"ERROR, no port provided\n");
          exit(1);
@@ -39,7 +41,9 @@ int main(int argc, char *argv[])
      if (bind(sockfd, (struct sockaddr *) &serv_addr,
               sizeof(serv_addr)) < 0) 
               error("ERROR on binding");
-     printf("2: Address: %d\n", serv_addr.sin_addr.s_addr);
+     
+     some_addr = inet_ntoa(serv_addr.sin_addr); // return the IP
+	 printf("%s\n", some_addr); // prints "10.0.0.1"
      /*
      listen(sockfd,5);
      clilen = sizeof(cli_addr);
