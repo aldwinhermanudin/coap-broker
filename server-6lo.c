@@ -7,7 +7,8 @@
 #include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <net/af_ieee802154.h>
+#include "../src/nl802154.h"
+//#include <net/af_ieee802154.h>
 
 void error(const char *msg)
 {
@@ -28,7 +29,7 @@ int main(int argc, char *argv[])
      /*if (argc < 2) {
          fprintf(stderr,"ERROR, no port provided\n");
          exit(1);
-     }*/
+     }
      sockfd = socket(PF_IEEE802154, SOCK_DGRAM, 0);
      if (sockfd < 0) 
         error("ERROR opening socket");
@@ -67,7 +68,7 @@ int main(int argc, char *argv[])
      if (n < 0) error("ERROR writing to socket");
      close(newsockfd);
      */
-     close(sockfd);
- 
+     //close(sockfd);
+	printf("berhasil meen\n");
      return 0; 
 }
