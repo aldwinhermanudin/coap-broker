@@ -8,6 +8,7 @@
 
 
 #include <stdint.h>
+#include <cstdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
