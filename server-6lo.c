@@ -30,22 +30,19 @@ int main(int argc, char *argv[])
      int sockfd, newsockfd, portno;
      socklen_t clilen;
      char buffer[256];
-     //struct sockaddr_ieee802154 serv_addr, cli_addr;
+     struct sockaddr_ieee802154 serv_addr, cli_addr;
      int n;
      
      char *some_addr;
      //char str[IEEE802154_ADDR_LEN];
-     /*if (argc < 2) {
-         fprintf(stderr,"ERROR, no port provided\n");
-         exit(1);
-     }
+     
      sockfd = socket(PF_IEEE802154, SOCK_DGRAM, 0);
      if (sockfd < 0) 
         error("ERROR opening socket");
      else 
 		printf("1: Opening socket succeeds\n");
 	
-     bzero((char *) &serv_addr, sizeof(serv_addr));
+     /*bzero((char *) &serv_addr, sizeof(serv_addr));
      portno = atoi(argv[1]);
      serv_addr.sin_family = PF_IEEE802154;
      serv_addr.addr.short_addr = INADDR_ANY;
