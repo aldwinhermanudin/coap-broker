@@ -41,6 +41,14 @@ int main(int argc, char *argv[])
         error("ERROR opening socket");
      else 
 		printf("1: Opening socket succeeds\n");
+		
+	serv_addr.sin_family = AF_IEEE802154;
+     serv_addr.addr.short_addr = INADDR_ANY;
+	if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(conf->src)) < 0) 
+              error("ERROR on binding");
+     else 
+		printf("2: Binding succeeds\n");
+	
 	
      /*bzero((char *) &serv_addr, sizeof(serv_addr));
      portno = atoi(argv[1]);
