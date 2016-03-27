@@ -16,6 +16,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "nl802154.h"
+#include "af_ieee802154.h"
 
 
 void error(const char *msg)
