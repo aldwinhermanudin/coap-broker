@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
      char *some_addr;
      //char str[IEEE802154_ADDR_LEN];
      
-     sockfd = socket(PF_IEEE802154, SOCK_DGRAM, 0);
+     sockfd = socket(AF_IEEE802154, SOCK_DGRAM, 0);
      if (sockfd < 0) 
         error("ERROR opening socket");
      else 
