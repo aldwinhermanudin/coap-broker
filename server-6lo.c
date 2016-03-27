@@ -6,9 +6,8 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
-
+#include <asm/types.h>
 #include <stdint.h>
-#include <cstdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
