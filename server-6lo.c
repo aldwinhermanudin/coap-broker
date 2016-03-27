@@ -19,15 +19,6 @@
 #include "nl802154.h"
 #include "af_ieee802154.h"
 
-typedef signed char s8;
-typedef unsigned char u8;
-typedef signed short s16;
-typedef unsigned short u16;
-typedef signed int s32;
-typedef unsigned int u32;
-typedef signed long s64;
-typedef unsigned long u64;
-
 void error(const char *msg)
 {
     perror(msg);
