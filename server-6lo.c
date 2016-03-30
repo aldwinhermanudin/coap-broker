@@ -489,7 +489,7 @@ int main(int argc, char *argv[]) {
 			conf->interface = optarg;
 			break;
 		case 'v':
-			fprintf(stdout, "wpan-ping " PACKAGE_VERSION "\n");
+			fprintf(stdout, "wpan-ping \n");
 			free(conf);
 			return 1;
 		case 'h':
