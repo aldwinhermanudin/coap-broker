@@ -216,9 +216,9 @@ static void init_server(int sd) {
 			perror("recvfrom");
 			continue;
 		}
-#if DEBUG
+//#if DEBUG
 		dump_packet(buf, len);
-#endif
+//#endif
 		/* Send same packet back */
 		len = sendto(sd, buf, len, 0, (struct sockaddr *)&src, addrlen);
 		if (len < 0) {
