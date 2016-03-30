@@ -42,7 +42,7 @@
 #include <netlink/attr.h>
 
 //#include "nl802154.h"
-#include "af_ieee802154.h"
+#include <net/af_ieee802154.h>
 
 int main() {
 	return 0;
