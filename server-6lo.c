@@ -394,47 +394,6 @@ static int init_network(struct config *conf) {
 	return 0;
 }
 
-static int parse_dst_addr(struct config *conf, char *arg)
-{
-	int i;
-
-	if (!arg)
-		return -1;
-
-	/* PAN ID is filled from netlink in get_interface_info */
-	conf->dst.family = AF_IEEE802154;
-
-	if (!conf->extended) {
-		conf->dst.addr.addr_type = IEEE802154_ADDR_SHORT;
-		conf->dst.addr.short_addr = strtol(arg, NULL, 16);
-		return 0;
-	}
-
-	conf->dst.addr.addr_type = IEEE802154_ADDR_LONG;
-
-	for (i = 0; i < IEEE802154_ADDR_LEN; i++) {
-		int temp;
-		char *cp = strchr(arg, ':');
-		if (cp) {
-			*cp = 0;
-			cp++;
-		}
-		if (sscanf(arg, "%x", &temp) != 1)
-			return -1;
-		if (temp < 0 || temp > 255)
-			return -1;
-
-		conf->dst.addr.hwaddr[i] = temp;
-		if (!cp)
-			break;
-		arg = cp;
-	}
-	if (i < IEEE802154_ADDR_LEN - 1)
-		return -1;
-
-	return 0;
-}
-
 int main(int argc, char *argv[]) {
 	int c, ret;
 	struct config *conf;
