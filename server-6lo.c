@@ -101,19 +101,6 @@ struct config {
 
 extern char *optarg;
 
-static void usage(const char *name) {
-	printf("Usage: %s OPTIONS\n"
-	"OPTIONS:\n"
-	"--daemon |-d\n"
-	"--address | -a server address\n"
-	"--extended | -e use extended addressing scheme 00:11:22:...\n"
-	"--count | -c number of packets\n"
-	"--size | -s packet length\n"
-	"--interface | -i listen on this interface (default wpan0)\n"
-	"--version | -v print out version\n"
-	"--help | -h this usage text\n", name);
-}
-
 static int nl802154_init(struct config *conf)
 {
 	int err;
@@ -211,130 +198,6 @@ static void dump_packet(unsigned char *buf, int len) {
 }
 #endif
 
-static int generate_packet(unsigned char *buf, struct config *conf, unsigned int seq_num) {
-	int i;
-
-	buf[0] = NOT_A_6LOWPAN_FRAME;
-	buf[1] = conf->packet_len;
-	buf[2] = seq_num >> 8; /* Upper byte */
-	buf[3] = seq_num & 0xFF; /* Lower byte */
-	for (i = 4; i < conf->packet_len; i++) {
-		buf[i] = 0xAB;
-	}
-
-	return 0;
-}
-
-static int print_address(char *addr, uint8_t dst_extended[IEEE802154_ADDR_LEN])
-{
-	snprintf(addr, 24, "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x", dst_extended[0],
-		dst_extended[1], dst_extended[2], dst_extended[3], dst_extended[4],
-		dst_extended[5], dst_extended[6], dst_extended[7]);
-	return 0;
-}
-
-static int measure_roundtrip(struct config *conf, int sd) {
-	unsigned char *buf;
-	struct timeval start_time, end_time, timeout;
-	long sec = 0, usec = 0;
-	long sec_max = 0, usec_max = 0;
-	long sec_min = 2147483647, usec_min = 2147483647;
-	long sum_sec = 0, sum_usec = 0;
-	int i, ret, count;
-	unsigned short seq_num;
-	float rtt_min = 0.0, rtt_avg = 0.0, rtt_max = 0.0;
-	float packet_loss = 100.0;
-	char addr[24];
-
-	if (conf->extended)
-		print_address(addr, conf->dst.addr.hwaddr);
-
-	if (conf->extended)
-		fprintf(stdout, "PING %s (PAN ID 0x%04x) %i data bytes\n",
-			addr, conf->dst.addr.pan_id, conf->packet_len);
-	else
-		fprintf(stdout, "PING 0x%04x (PAN ID 0x%04x) %i data bytes\n",
-			conf->dst.addr.short_addr, conf->dst.addr.pan_id, conf->packet_len);
-	buf = (unsigned char *)malloc(MAX_PAYLOAD_LEN);
-
-	/* 500ms seconds packet receive timeout */
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 500000;
-	ret = setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout,sizeof(struct timeval));
-	if (ret < 0) {
-		perror("setsockopt receive timeout");
-	}
-
-	count = 0;
-	for (i = 0; i < conf->packets; i++) {
-		generate_packet(buf, conf, i);
-		seq_num = (buf[2] << 8)| buf[3];
-		ret = sendto(sd, buf, conf->packet_len, 0, (struct sockaddr *)&conf->dst, sizeof(conf->dst));
-		if (ret < 0) {
-			perror("sendto");
-		}
-		gettimeofday(&start_time, NULL);
-		ret = recv(sd, buf, conf->packet_len, 0);
-		if (seq_num != ((buf[2] << 8)| buf[3])) {
-			printf("Sequenze number did not match\n");
-			continue;
-		}
-		if (ret > 0) {
-			gettimeofday(&end_time, NULL);
-			count++;
-			sec = end_time.tv_sec - start_time.tv_sec;
-			sum_sec += sec;
-			usec = end_time.tv_usec - start_time.tv_usec;
-			if (usec < 0) {
-				usec += 1000000;
-				sec--;
-				sum_sec--;
-			}
-
-			sum_usec += usec;
-			if (sec > sec_max)
-				sec_max = sec;
-			else if (sec < sec_min)
-				sec_min = sec;
-			if (usec > usec_max)
-				usec_max = usec;
-			else if (usec < usec_min)
-				usec_min = usec;
-			if (sec > 0)
-				fprintf(stdout, "Warning: packet return time over a second!\n");
-
-			if (conf->extended)
-				fprintf(stdout, "%i bytes from %s seq=%i time=%.1f ms\n", ret,
-					addr, (int)seq_num, (float)usec/1000);
-			else
-				fprintf(stdout, "%i bytes from 0x%04x seq=%i time=%.1f ms\n", ret,
-					conf->dst.addr.short_addr, (int)seq_num, (float)usec/1000);
-		} else
-			fprintf(stderr, "Hit 500 ms packet timeout\n");
-	}
-
-	if (count)
-		packet_loss = 100 - ((100 * count)/conf->packets);
-
-	if (usec_min)
-		rtt_min = (float)usec_min/1000;
-	if (sum_usec && count)
-		rtt_avg = ((float)sum_usec/(float)count)/1000;
-	if (usec_max)
-		rtt_max = (float)usec_max/1000;
-
-	if (conf->extended)
-		fprintf(stdout, "\n--- %s ping statistics ---\n", addr);
-	else
-		fprintf(stdout, "\n--- 0x%04x ping statistics ---\n", conf->dst.addr.short_addr);
-	fprintf(stdout, "%i packets transmitted, %i received, %.0f%% packet loss\n",
-		conf->packets, count, packet_loss);
-	fprintf(stdout, "rtt min/avg/max = %.3f/%.3f/%.3f ms\n", rtt_min, rtt_avg, rtt_max);
-
-	free(buf);
-	return 0;
-}
-
 static void init_server(int sd) {
 	ssize_t len;
 	unsigned char *buf;
@@ -386,8 +249,8 @@ static int init_network(struct config *conf) {
 
 	if (conf->server)
 		init_server(sd);
-	else
-		measure_roundtrip(conf, sd);
+	//else
+		//measure_roundtrip(conf, sd); //bisa buat analisa, ambil lagi aja dari wpan-ping
 
 	shutdown(sd, SHUT_RDWR);
 	close(sd);
