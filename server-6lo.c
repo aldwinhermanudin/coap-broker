@@ -17,7 +17,7 @@
 #include <netinet/in.h>
 #include <linux/types.h>
 #include "nl802154.h"
-#include "af_ieee802154.h"
+//#include "af_ieee802154.h"
 
 #define MIN_PAYLOAD_LEN 5
 #define MAX_PAYLOAD_LEN 105 //116 with short address
