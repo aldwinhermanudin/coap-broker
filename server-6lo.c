@@ -1,23 +1,47 @@
-/* A simple server in the internet domain using TCP
-   The port number is passed as an argument */
-#include <net/if.h>
+/*
+ * Linux IEEE 802.15.4 ping tool
+ *
+ * Copyright (C) 2015 Stefan Schmidt <stefan@datenfreihafen.org>
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <errno.h>
-#include <string.h>
-#include <stdbool.h>
-#include <inttypes.h>
-
-#include <asm/types.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <unistd.h>
-#include <sys/types.h> 
+#include <net/if.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <linux/types.h>
+#include <sys/time.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <stdbool.h>
+
+#include <netlink/netlink.h>
+
+#include <netlink/genl/genl.h>
+#include <netlink/genl/family.h>
+#include <netlink/genl/ctrl.h>
+#include <netlink/msg.h>
+#include <netlink/attr.h>
+
 #include "nl802154.h"
-//#include "af_ieee802154.h"
 
 #define MIN_PAYLOAD_LEN 5
 #define MAX_PAYLOAD_LEN 105 //116 with short address
@@ -424,10 +448,70 @@ int main(int argc, char *argv[]) {
 
 	/* Default to short addressing */
 	conf->extended = false;
-	
-	conf->server = true;
+
+	if (argc < 2) {
+		usage(argv[0]);
+		exit(1);
+	}
+
+	while (1) {
+#ifdef _GNU_SOURCE
+		int opt_idx = -1;
+		c = getopt_long(argc, argv, "a:ec:s:i:dvh", perf_long_opts, &opt_idx);
+#else
+		c = getopt(argc, argv, "a:ec:s:i:dvh");
+#endif
+		if (c == -1)
+			break;
+		switch(c) {
+		case 'a':
+			dst_addr = optarg;
+			break;
+		case 'e':
+			conf->extended = true;
+			break;
+		case 'd':
+			conf->server = true;
+			break;
+		case 'c':
+			conf->packets = atoi(optarg);
+			break;
+		case 's':
+			conf->packet_len = atoi(optarg);
+			if (conf->packet_len >= MAX_PAYLOAD_LEN || conf->packet_len < MIN_PAYLOAD_LEN) {
+				printf("Packet size must be between %i and %i.\n",
+				       MIN_PAYLOAD_LEN, MAX_PAYLOAD_LEN - 1);
+				free(conf);
+				return 1;
+			}
+			break;
+		case 'i':
+			conf->interface = optarg;
+			break;
+		case 'v':
+			fprintf(stdout, "wpan-ping " PACKAGE_VERSION "\n");
+			free(conf);
+			return 1;
+		case 'h':
+			usage(argv[0]);
+			free(conf);
+			return 1;
+		default:
+			usage(argv[0]);
+			free(conf);
+			return 1;
+		}
+	}
+
 	get_interface_info(conf);
 
+	if (!conf->server) {
+		ret = parse_dst_addr(conf, dst_addr);
+		if (ret< 0) {
+			fprintf(stderr, "Address given in wrong format.\n");
+			return 1;
+		}
+	}
 	init_network(conf);
 	free(conf);
 	return 0;
