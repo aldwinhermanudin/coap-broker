@@ -43,15 +43,13 @@
 
 #include "nl802154.h"
 
-#define DEBUG
-
 #define MIN_PAYLOAD_LEN 5
 #define MAX_PAYLOAD_LEN 105 //116 with short address
 #define IEEE802154_ADDR_LEN 8
 /* Set the dispatch header to not 6lowpan for compat */
 #define NOT_A_6LOWPAN_FRAME 0x00
 
-#define DEBUG 0
+#define DEBUG 1
 
 enum {
 	IEEE802154_ADDR_NONE = 0x0,
