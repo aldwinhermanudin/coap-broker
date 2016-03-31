@@ -57,6 +57,13 @@ int main(void)
 
 	/* the port we are going to send to, in network byte order */
 	server_addr.sin6_port = htons(PORT);
+	
+	/* associate the socket with the address and port */
+	if (bind(sock, (struct sockaddr *)&server_addr,
+	   sizeof(server_addr)) < 0) {
+		perror("bind failed");
+		exit(2);
+	}
 
 	/* now send a datagram */
 	if (sendto(sock, MESSAGE, sizeof(MESSAGE), 0, 
