@@ -25,7 +25,7 @@
 
 #define PORT 12345
 #define MESSAGE "hi there"
-#define SERVADDR "fe80::3c41:2962:75f0:3a81"
+#define SERVADDR "fe80::3c41:2962:75f0:3a81%wlan0"
 
 int main(void)
 {
@@ -67,7 +67,7 @@ int main(void)
 	}
 	inet_ntop(AF_INET6, &(server_addr.sin6_addr), str, INET_ADDRSTRLEN);
 
-	printf("%s\n", str); // prints "192.0.2.33"
+	printf("alamt tujuan: %s\n", str); // prints "192.0.2.33"
 
 	/* the port we are going to send to, in network byte order */
 	server_addr.sin6_port = htons(PORT);
