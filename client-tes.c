@@ -54,7 +54,7 @@ int main(void)
 
 	/* convert IPv4 and IPv6 addresses from text to binary form */
 	// int inet_pton(int af, const char *src, void *dst);
-	tes = inet_pton(AF_INET6, "fe80::3c41:2962:75f0:3a81", &(server_addr.sin6_addr));
+	tes = inet_pton(AF_INET6, "fe80::3c41:2962:75f0:3a81%wlan0", &(server_addr.sin6_addr));
 
 	if (tes == 1) {
 		printf("pton sukses\n");
