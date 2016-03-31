@@ -257,6 +257,99 @@ static int measure_roundtrip(struct config *conf, int sd) {
 
 	/* 500ms seconds packet receive timeout */
 	timeout.tv_sec = 0;
+	timeout.tv_usec = 1000000; //1 detik
+	ret = setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout,sizeof(struct timeval));
+	if (ret < 0) {
+		perror("setsockopt receive timeout");
+	}
+
+	count = 0;
+	
+		generate_packet(buf, conf, i);
+		seq_num = (buf[2] << 8)| buf[3];
+		ret = sendto(sd, buf, conf->packet_len, 0, (struct sockaddr *)&conf->dst, sizeof(conf->dst));
+		if (ret < 0) {
+			perror("sendto");
+		}
+		gettimeofday(&start_time, NULL);
+		ret = recv(sd, buf, conf->packet_len, 0);
+		if (seq_num != ((buf[2] << 8)| buf[3])) {
+			printf("Sequenze number did not match\n");
+			continue;
+		}
+		if (ret > 0) {
+			gettimeofday(&end_time, NULL);
+			count++;
+			sec = end_time.tv_sec - start_time.tv_sec;
+			sum_sec += sec;
+			usec = end_time.tv_usec - start_time.tv_usec;
+			if (usec < 0) {
+				usec += 1000000;
+				sec--;
+				sum_sec--;
+			}
+
+			sum_usec += usec;
+			if (sec > sec_max)
+				sec_max = sec;
+			else if (sec < sec_min)
+				sec_min = sec;
+			if (usec > usec_max)
+				usec_max = usec;
+			else if (usec < usec_min)
+				usec_min = usec;
+			if (sec > 0)
+				fprintf(stdout, "Warning: packet return time over a second!\n");
+
+			if (conf->extended)
+				fprintf(stdout, "%i bytes from %s seq=%i time=%.1f ms\n", ret,
+					addr, (int)seq_num, (float)usec/1000);
+			else
+				fprintf(stdout, "%i bytes from 0x%04x seq=%i time=%.1f ms\n", ret,
+					conf->dst.addr.short_addr, (int)seq_num, (float)usec/1000);
+		} else
+			fprintf(stderr, "Hit 500 ms packet timeout\n");
+	
+
+	if (count)
+		packet_loss = 100 - ((100 * count)/conf->packets);
+
+	if (usec_min)
+		rtt_min = (float)usec_min/1000;
+	if (sum_usec && count)
+		rtt_avg = ((float)sum_usec/(float)count)/1000;
+	if (usec_max)
+		rtt_max = (float)usec_max/1000;
+
+	if (conf->extended)
+		fprintf(stdout, "\n--- %s ping statistics ---\n", addr);
+	else
+		fprintf(stdout, "\n--- 0x%04x ping statistics ---\n", conf->dst.addr.short_addr);
+	fprintf(stdout, "%i packets transmitted, %i received, %.0f%% packet loss\n",
+		conf->packets, count, packet_loss);
+	fprintf(stdout, "rtt min/avg/max = %.3f/%.3f/%.3f ms\n", rtt_min, rtt_avg, rtt_max);
+
+	free(buf);
+	return 0;
+}
+
+static int sendToServer(struct config *conf, int sd) {
+	unsigned char *buf;
+	struct timeval start_time, end_time, timeout;
+	long sec = 0, usec = 0;
+	long sec_max = 0, usec_max = 0;
+	long sec_min = 2147483647, usec_min = 2147483647;
+	long sum_sec = 0, sum_usec = 0;
+	int i, ret, count;
+	unsigned short seq_num;
+	float rtt_min = 0.0, rtt_avg = 0.0, rtt_max = 0.0;
+	float packet_loss = 100.0;
+	char addr[24];
+
+	buf = (unsigned char *)malloc(MAX_PAYLOAD_LEN);
+
+	/* 500ms seconds packet receive timeout */
+	timeout.tv_sec = 0;
 	timeout.tv_usec = 500000;
 	ret = setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout,sizeof(struct timeval));
 	if (ret < 0) {
@@ -333,37 +426,6 @@ static int measure_roundtrip(struct config *conf, int sd) {
 	return 0;
 }
 
-static void init_server(int sd) {
-	ssize_t len;
-	unsigned char *buf;
-	struct sockaddr_ieee802154 src;
-	socklen_t addrlen;
-
-	addrlen = sizeof(src);
-
-	len = 0;
-	fprintf(stdout, "Server mode. Waiting for packets...\n");
-	buf = (unsigned char *)malloc(MAX_PAYLOAD_LEN);
-
-	while (1) {
-		len = recvfrom(sd, buf, MAX_PAYLOAD_LEN, 0, (struct sockaddr *)&src, &addrlen);
-		if (len < 0) {
-			perror("recvfrom");
-			continue;
-		}
-#if DEBUG
-		dump_packet(buf, len);
-#endif
-		/* Send same packet back */
-		len = sendto(sd, buf, len, 0, (struct sockaddr *)&src, addrlen);
-		if (len < 0) {
-			perror("sendto");
-			continue;
-		}
-	}
-	free(buf);
-}
-
 static int init_network(struct config *conf) {
 	int sd;
 	int ret;
@@ -382,10 +444,8 @@ static int init_network(struct config *conf) {
 		return 1;
 	}
 
-	if (conf->server)
-		init_server(sd);
-	else
-		measure_roundtrip(conf, sd);
+	//measure_roundtrip(conf, sd);
+	sendToServer(conf, sd);
 
 	shutdown(sd, SHUT_RDWR);
 	close(sd);
@@ -455,12 +515,12 @@ int main(int argc, char *argv[]) {
 		c = getopt(argc, argv, "a:ec:s:i:dvh");
 #endif
 	
-	//dst_addr = optarg;
-	dst_addr = "0x0003";
+	dst_addr = optarg;
+	//dst_addr = "0x0003";
 	
 	fprintf(stderr, "%s %s %s", "dst_addr: ", dst_addr, "\n");
 	
-	/*get_interface_info(conf);
+	get_interface_info(conf);
 
 	ret = parse_dst_addr(conf, dst_addr);
 	if (ret< 0) {
@@ -470,6 +530,6 @@ int main(int argc, char *argv[]) {
 
 	init_network(conf);
 	free(conf);
-	* */
+	
 	return 0;
 }
