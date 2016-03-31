@@ -29,7 +29,7 @@
 
 int main(void)
 {
-	int sock;
+	int sock, tes;
 	socklen_t clilen;
 	struct sockaddr_in6 server_addr, client_addr;
 	char buffer[1024];
@@ -54,8 +54,17 @@ int main(void)
 
 	/* convert IPv4 and IPv6 addresses from text to binary form */
 	// int inet_pton(int af, const char *src, void *dst);
-	inet_pton(AF_INET6, SERVADDR, &(server_addr.sin6_addr));
+	tes = inet_pton(AF_INET6, SERVADDR, &(server_addr.sin6_addr));
 
+	if (tes == 1) {
+		printf("pton sukses\n");
+	}
+	else if (tes == -1) {
+		printf("errno: ");
+	}
+	else if (tes == 0) {
+		pintf("not a valid ip addr\n");
+	}
 	inet_ntop(AF_INET6, &(server_addr.sin6_addr), str, INET_ADDRSTRLEN);
 
 	printf("%s\n", str); // prints "192.0.2.33"
