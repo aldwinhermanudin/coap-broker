@@ -25,7 +25,7 @@
 
 #define PORT 12345
 #define MESSAGE "hi there"
-#define SERVADDR "fe80::94ae:7b6f:7556:81c0%lowpan0"
+#define SERVADDR "fe80::94ae:7b6f:7556:81c0"
 
 int main(void)
 {
@@ -53,13 +53,7 @@ int main(void)
 
 	/* convert IPv4 and IPv6 addresses from text to binary form */
 	// int inet_pton(int af, const char *src, void *dst);
-	if (inet_pton(AF_INET6, SERVADDR, &server_addr.sin6_addr) == 1) {
-		printf("inet_pton succeeds\n");
-	}
-	else {
-		perror("error on inet_pton: ");
-		exit(1);
-	}
+	inet_pton(AF_INET6, SERVADDR, &server_addr.sin6_addr);
 
 	/* the port we are going to send to, in network byte order */
 	server_addr.sin6_port = htons(PORT);
