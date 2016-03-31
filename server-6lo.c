@@ -49,7 +49,7 @@
 /* Set the dispatch header to not 6lowpan for compat */
 #define NOT_A_6LOWPAN_FRAME 0x00
 
-#define DEBUG 1
+#define DEBUG 0
 
 enum {
 	IEEE802154_ADDR_NONE = 0x0,
