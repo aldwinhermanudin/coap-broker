@@ -34,7 +34,8 @@ int main(void)
 	struct sockaddr_in6 server_addr, client_addr;
 	char buffer[1024];
 	char addrbuf[INET6_ADDRSTRLEN];
-
+	char str[INET6_ADDRSTRLEN];
+	
 	/* create a DGRAM (UDP) socket in the INET6 (IPv6) protocol */
 	sock = socket(PF_INET6, SOCK_DGRAM, 0); //nanti ganti socket(PF_IEEE802154, SOCK_DGRAM, 0);
 
@@ -53,7 +54,11 @@ int main(void)
 
 	/* convert IPv4 and IPv6 addresses from text to binary form */
 	// int inet_pton(int af, const char *src, void *dst);
-	inet_pton(AF_INET6, SERVADDR, &server_addr.sin6_addr);
+	inet_pton(AF_INET6, SERVADDR, &(server_addr.sin6_addr));
+
+	inet_ntop(AF_INET6, &(server_addr.sin6_addr), str, INET_ADDRSTRLEN);
+
+	printf("%s\n", str); // prints "192.0.2.33"
 
 	/* the port we are going to send to, in network byte order */
 	server_addr.sin6_port = htons(PORT);
