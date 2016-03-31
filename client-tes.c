@@ -63,7 +63,7 @@ int main(void)
 		printf("errno: ");
 	}
 	else if (tes == 0) {
-		pintf("not a valid ip addr\n");
+		printf("not a valid ip addr\n");
 	}
 	inet_ntop(AF_INET6, &(server_addr.sin6_addr), str, INET_ADDRSTRLEN);
 
