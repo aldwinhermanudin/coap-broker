@@ -455,7 +455,8 @@ int main(int argc, char *argv[]) {
 		c = getopt(argc, argv, "a:ec:s:i:dvh");
 #endif
 	
-	dst_addr = optarg;
+	//dst_addr = optarg;
+	dst_addr = "0x0003";
 	
 	fprintf(stderr, "%s %s %s", "dst_addr: ", dst_addr, "\n");
 	
