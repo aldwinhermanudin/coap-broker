@@ -25,7 +25,7 @@
 
 #define PORT 12345
 #define MESSAGE "hi there"
-#define SERVADDR "fe80::ec06:342:b8b3:b0cc"
+#define SERVADDR "fe80::94ae:7b6f:7556:81c0"
 
 int main(void)
 {
