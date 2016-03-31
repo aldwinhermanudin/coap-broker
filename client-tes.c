@@ -51,6 +51,8 @@ int main(void)
 
 	/* it is an INET address */
 	server_addr.sin6_family = AF_INET6;
+	
+	server_addr.sin6_scope_id = if_nametoindex("wlan0");
 
 	/* convert IPv4 and IPv6 addresses from text to binary form */
 	// int inet_pton(int af, const char *src, void *dst);
