@@ -448,10 +448,16 @@ int main(int argc, char *argv[]) {
 
 	/* Default to short addressing */
 	conf->extended = false;
+#ifdef _GNU_SOURCE
+		int opt_idx = -1;
+		c = getopt_long(argc, argv, "a:ec:s:i:dvh", perf_long_opts, &opt_idx);
+#else
+		c = getopt(argc, argv, "a:ec:s:i:dvh");
+#endif
 	
 	dst_addr = optarg;
 	
-	fprintf(stderr, "%s %s", "dst_addr: ", dst_addr);
+	fprintf(stderr, "%s %s %s", "dst_addr: ", dst_addr, "\n");
 	
 	/*get_interface_info(conf);
 
