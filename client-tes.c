@@ -29,7 +29,7 @@
 
 int main(int argc, char *argv[])
 {
-	int sock, tes;
+	int sock, tes, rv
 	socklen_t clilen;
 	struct sockaddr_in6 server_addr, client_addr;
 	char buffer[1024];
@@ -56,23 +56,13 @@ int main(int argc, char *argv[])
 	
 	server_addr.sin6_scope_id = if_nametoindex("wlan0");
 	printf("if: %d\n", if_nametoindex("wlan0"));
-	/* convert IPv4 and IPv6 addresses from text to binary form */
-	// int inet_pton(int af, const char *src, void *dst);
-	tes = inet_pton(AF_INET6, argv[1], &(server_addr.sin6_addr));
-
-	if (tes == 1) {
-		printf("pton sukses\n");
+	
+	if ((rv = getaddrinfo("www.example.com", NULL, &hints, &servinfo)) != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		exit(1);
 	}
-	else if (tes == -1) {
-		printf("errno: ");
-	}
-	else if (tes == 0) {
-		printf("not a valid ip addr\n");
-	}
-	inet_ntop(AF_INET6, &(server_addr.sin6_addr), str, INET_ADDRSTRLEN);
-
-	printf("alamt tujuan: %s\n", str); // prints "192.0.2.33"
-
+	
+	
 	/* the port we are going to send to, in network byte order */
 	server_addr.sin6_port = htons(PORT);
 	
