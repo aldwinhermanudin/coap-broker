@@ -36,6 +36,8 @@ int main(int argc, char *argv[])
 	char addrbuf[INET6_ADDRSTRLEN];
 	char str[INET6_ADDRSTRLEN];
 	
+	printf("ip yang dimasukkin: %s\n\n", argv[1]);
+	
 	/* create a DGRAM (UDP) socket in the INET6 (IPv6) protocol */
 	sock = socket(PF_INET6, SOCK_DGRAM, 0); //nanti ganti socket(PF_IEEE802154, SOCK_DGRAM, 0);
 
