@@ -1,100 +1,80 @@
-/*
-  Example IPv6 UDP client.
-  Copyright (C) 2010 Russell Bradford
-
-  This program is free software; you can redistribute it and/or
-  modify it under the terms of the GNU General Public License
-  as published by the Free Software Foundation; either version 2
-  of the License, or (at your option) any later version.
-
-  This program is distributed in the hope that it will be useful, 
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License (http://www.gnu.org/copyleft/gpl.html)
-  for more details. 
-*/
+/* $Id$ 
+ * 
+ *
+ * 
+ * 
+ */
 
 #include <stdio.h>
 #include <unistd.h>
-#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
+#include <stdlib.h>
 #include <arpa/inet.h>
-#include <string.h>
 
-#define PORT 12345
-#define MESSAGE "hi there"
-#define SERVADDR "fe80::3c41:2962:75f0:3a81%wlan0"
+#define MAXBUF 65536
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
-	int sock, tes, rv
-	socklen_t clilen;
-	struct sockaddr_in6 server_addr, client_addr;
-	char buffer[1024];
-	char addrbuf[INET6_ADDRSTRLEN];
-	char str[INET6_ADDRSTRLEN];
-	
-	printf("ip yang dimasukkin: %s\n\n", argv[1]);
-	
-	/* create a DGRAM (UDP) socket in the INET6 (IPv6) protocol */
-	sock = socket(PF_INET6, SOCK_DGRAM, 0); //nanti ganti socket(PF_IEEE802154, SOCK_DGRAM, 0);
+   int sock;
+   int status;
+   struct addrinfo sainfo, *psinfo;
+   struct sockaddr_in6 sin6;
+   int sin6len;
+   char buffer[MAXBUF];
 
-	if (sock < 0) {
-		perror("creating socket");
-		exit(1);
-	}
+   sin6len = sizeof(struct sockaddr_in6);
 
-	/* create server address: where we want to send to */
+   if(argc < 2)
+     printf("Specify a port number\n"), exit(1);
 
-	/* clear it out */
-	memset(&server_addr, 0, sizeof(server_addr));
+   sock = socket(PF_INET6, SOCK_DGRAM,0);
 
-	/* it is an INET address */
-	server_addr.sin6_family = AF_INET6;
-	
-	server_addr.sin6_scope_id = if_nametoindex("wlan0");
-	printf("if: %d\n", if_nametoindex("wlan0"));
-	
-	if ((rv = getaddrinfo("www.example.com", NULL, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		exit(1);
-	}
-	
-	
-	/* the port we are going to send to, in network byte order */
-	server_addr.sin6_port = htons(PORT);
-	
-	/* associate the socket with the address and port */
-	if (bind(sock, (struct sockaddr *)&server_addr,
-	   sizeof(server_addr)) < 0) {
-		perror("bind failed");
-		exit(2);
-	}
+   memset(&sin6, 0, sizeof(struct sockaddr_in6));
+   sin6.sin6_port = htons(0);
+   sin6.sin6_family = AF_INET6;
+   sin6.sin6_addr = in6addr_any;
 
-	/* now send a datagram */
-	if (sendto(sock, MESSAGE, sizeof(MESSAGE), 0, 
-		(struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-		perror("sendto failed");
-		exit(4);
-	}
+   status = bind(sock, (struct sockaddr *)&sin6, sin6len);
 
-	printf("waiting for a reply...\n");
-	clilen = sizeof(client_addr);
-	if (recvfrom(sock, buffer, 1024, 0,
-	       (struct sockaddr *)&client_addr,
-               &clilen) < 0) {
-		perror("recvfrom failed");
-		exit(4);
-	}
+   if(-1 == status)
+     perror("bind"), exit(1);
 
-	printf("got '%s' from %s\n", buffer, 
-		inet_ntop(AF_INET6, &client_addr.sin6_addr, addrbuf,
-		INET6_ADDRSTRLEN));
+   memset(&sainfo, 0, sizeof(struct addrinfo));
+   memset(&sin6, 0, sin6len);
 
-	/* close socket */
-	close(sock);
+   sainfo.ai_flags = 0;
+   sainfo.ai_family = AF_INET6;
+   sainfo.ai_socktype = SOCK_DGRAM;
+   sainfo.ai_protocol = IPPROTO_UDP;
+   status = getaddrinfo("ip6-localhost", argv[1], &sainfo, &psinfo);
 
-	return 0;
+   switch (status) 
+     {
+      case EAI_FAMILY: printf("family\n");
+        break;
+      case EAI_SOCKTYPE: printf("stype\n");
+        break;
+      case EAI_BADFLAGS: printf("flag\n");
+        break;
+      case EAI_NONAME: printf("noname\n");
+        break;
+      case EAI_SERVICE: printf("service\n");
+        break;
+     }
+   sprintf(buffer,"Ciao");
+
+   status = sendto(sock, buffer, strlen(buffer), 0,
+                     (struct sockaddr *)psinfo->ai_addr, sin6len);
+   printf("buffer : %s \t%d\n", buffer, status);
+
+   // free memory
+   freeaddrinfo(psinfo);
+   psinfo = NULL;
+
+   shutdown(sock, 2);
+   close(sock);
+   return 0;
 }
