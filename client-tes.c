@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 	server_addr.sin6_family = AF_INET6;
 	
 	server_addr.sin6_scope_id = if_nametoindex("wlan0");
-	printf("if: %d\n", if_nametoindex("eth0"));
+	printf("if: %d\n", if_nametoindex("wlan0"));
 	/* convert IPv4 and IPv6 addresses from text to binary form */
 	// int inet_pton(int af, const char *src, void *dst);
 	tes = inet_pton(AF_INET6, argv[1], &(server_addr.sin6_addr));
