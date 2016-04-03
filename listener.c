@@ -31,7 +31,7 @@ int main(void)
 {
     int sockfd;
     struct addrinfo hints, *servinfo, *p;
-    int rv;
+    int rv, i;
     int numbytes;
     struct sockaddr_storage their_addr;
     char buf[MAXBUFLEN];
@@ -39,7 +39,7 @@ int main(void)
     char s[INET6_ADDRSTRLEN];
 
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET6; // set to AF_INET to force IPv4
+    hints.ai_family = AF_INET6; 
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_PASSIVE; // use my IP
 
@@ -89,6 +89,10 @@ int main(void)
     buf[numbytes] = '\0';
     printf("listener: packet contains \"%s\"\n", buf);
 
+	printf("try to dump:\n\n");
+	for (i = 0; i < numbytes; i++) {
+		printf("%x ", buf[i]);
+	}
     close(sockfd);
 
     return 0;
