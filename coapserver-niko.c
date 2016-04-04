@@ -34,7 +34,7 @@ int main(int argc, char* argv[]){
     
     /* Prepare the CoAP server socket */ 
     coap_address_init(&serv_addr);
-    serv_addr.addr.sin.sin_family = AF_INET;
+    serv_addr.addr.sin.sin_family = AF_INET6;
     serv_addr.addr.sin.sin_addr.s_addr = INADDR_ANY;
     serv_addr.addr.sin.sin_port = htons(5683); //This is the port
     ctx = coap_new_context(&serv_addr);
