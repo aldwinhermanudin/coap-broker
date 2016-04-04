@@ -36,7 +36,7 @@ int main(int argc, char* argv[]){
     coap_address_init(&serv_addr);
     serv_addr.addr.sin.sin_family = AF_INET;
     serv_addr.addr.sin.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.addr.sin.sin_port = htons(4000); //This is the port
+    serv_addr.addr.sin.sin_port = htons(5683); //This is the port
     ctx = coap_new_context(&serv_addr);
     if (!ctx)
         exit(EXIT_FAILURE);
