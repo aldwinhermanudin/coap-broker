@@ -1,0 +1,26 @@
+#define BUFSIZE 16;
+
+char c;
+char port[BUFSIZE+1];
+char addr[BUFSIZE+1];
+
+while ( (c = getopt(argc, argv, "i:p:") ) != -1) 
+{
+    switch (c) 
+    {
+        case 'i':
+            snprintf(addr,BUFSIZE,"%s",optarg);
+            break;
+        case 'p':
+            snprintf(port,BUFSIZE,"%s",optarg);
+            break;
+        case '?':
+            fprintf(stderr, "Unrecognized option!\n");
+            break;
+    }
+}
+
+gcc cobain-client-coap.c coap_list.c -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX -lcoap-1 -g -o tes
+
+gcc coap_list.c cmdline.c -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX -lcoap-1 -g -o tes
+

@@ -1,0 +1,8 @@
+#include <stdio.h>
+#include "cmdline.h"
+
+int main(int argc, char *argv[]) {
+int opt;
+opt = getopt(argc, argv, "Na:b:e:f:g:m:p:s:t:o:v:A:B:O:P:T:"));
+return 0;
+}

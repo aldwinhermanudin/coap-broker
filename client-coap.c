@@ -1022,112 +1022,53 @@ get_context(const char *node, const char *port) {
 
 int
 main(int argc, char **argv) {
-  coap_context_t  *ctx = NULL;
-  coap_address_t dst;
-  static char addr[INET6_ADDRSTRLEN];
-  void *addrptr = NULL;
-  fd_set readfds;
-  struct timeval tv;
-  int result;
-  coap_tick_t now;
-  coap_queue_t *nextpdu;
-  coap_pdu_t  *pdu;
-  static str server;
-  unsigned short port = COAP_DEFAULT_PORT;
-  char port_str[NI_MAXSERV] = "0";
-  char node_str[NI_MAXHOST] = "";
-  int opt, res;
-  coap_log_t log_level = LOG_WARNING;
-  coap_tid_t tid = COAP_INVALID_TID;
+	coap_context_t  *ctx = NULL;
+	coap_address_t dst;
+	static char addr[INET6_ADDRSTRLEN];
+	void *addrptr = NULL;
+	fd_set readfds;
+	struct timeval tv;
+	int result;
+	coap_tick_t now;
+	coap_queue_t *nextpdu;
+	coap_pdu_t  *pdu;
+	static str server;
+	unsigned short port = COAP_DEFAULT_PORT;
+	char port_str[NI_MAXSERV] = "0";
+	char node_str[NI_MAXHOST] = "";
+	int opt, res;
+	coap_log_t log_level = LOG_WARNING;
+	coap_tid_t tid = COAP_INVALID_TID;
 
-  while ((opt = getopt(argc, argv, "Na:b:e:f:g:m:p:s:t:o:v:A:B:O:P:T:")) != -1) {
-    switch (opt) {
-    case 'a' :
-      strncpy(node_str, optarg, NI_MAXHOST-1);
-      node_str[NI_MAXHOST - 1] = '\0';
-      break;
-    case 'b' :
-      cmdline_blocksize(optarg);
-      break;
-    case 'B' :
-      wait_seconds = atoi(optarg);
-      break;
-    case 'e' :
-      if (!cmdline_input(optarg,&payload))
-        payload.length = 0;
-      break;
-    case 'f' :
-      if (!cmdline_input_from_file(optarg,&payload))
-        payload.length = 0;
-      break;
-    case 'p' :
-      strncpy(port_str, optarg, NI_MAXSERV-1);
-      port_str[NI_MAXSERV - 1] = '\0';
-      break;
-    case 'm' :
-      method = cmdline_method(optarg);
-      break;
-    case 'N' :
-      msgtype = COAP_MESSAGE_NON;
-      break;
-    case 's' :
-      cmdline_subscribe(optarg);
-      break;
-    case 'o' :
-      output_file.length = strlen(optarg);
-      output_file.s = (unsigned char *)coap_malloc(output_file.length + 1);
+	while ((opt = getopt(argc, argv, "Na:b:e:f:g:m:p:s:t:o:v:A:B:O:P:T:")) != -1) {
+		switch (opt) {
+			case 'm' :
+				method = cmdline_method(optarg);
+				break;
+			default:
+				usage( argv[0], PACKAGE_VERSION );
+				exit( 1 );
+		}
+	}
+     
 
-      if (!output_file.s) {
-        fprintf(stderr, "cannot set output file: insufficient memory\n");
-        exit(-1);
-      } else {
-        /* copy filename including trailing zero */
-        memcpy(output_file.s, optarg, output_file.length + 1);
-      }
-      break;
-    case 'A' :
-      cmdline_content_type(optarg,COAP_OPTION_ACCEPT);
-      break;
-    case 't' :
-      cmdline_content_type(optarg,COAP_OPTION_CONTENT_TYPE);
-      break;
-    case 'O' :
-      cmdline_option(optarg);
-      break;
-    case 'P' :
-      if (!cmdline_proxy(optarg)) {
-        fprintf(stderr, "error specifying proxy address\n");
-        exit(-1);
-      }
-      break;
-    case 'T' :
-      cmdline_token(optarg);
-      break;
-    case 'v' :
-      log_level = strtol(optarg, NULL, 10);
-      break;
-    default:
-      usage( argv[0], PACKAGE_VERSION );
-      exit( 1 );
-    }
-  }
+	// Sets the log level to the specified value.
+	coap_set_log_level(log_level);
 
-  coap_set_log_level(log_level);
+	if ( optind < argc )
+		cmdline_uri( argv[optind] );
+	else {
+		usage( argv[0], PACKAGE_VERSION );
+		exit( 1 );
+	}
 
-  if ( optind < argc )
-    cmdline_uri( argv[optind] );
-  else {
-    usage( argv[0], PACKAGE_VERSION );
-    exit( 1 );
-  }
-
-  if (proxy.length) {
-    server = proxy;
-    port = proxy_port;
-  } else {
-    server = uri.host;
-    port = uri.port;
-  }
+	if (proxy.length) {
+		server = proxy;
+		port = proxy_port;
+	} else {
+		server = uri.host;
+		port = uri.port;
+	}
 
   /* resolve destination address where server should be sent */
   res = resolve_address(&server, &dst.addr.sa);
