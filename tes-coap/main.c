@@ -785,6 +785,7 @@ main(int argc, char **argv) {
   }
 #endif
 
+	printf("samppe sini masih ok\n");
   if (pdu->hdr->type == COAP_MESSAGE_CON)
     tid = coap_send_confirmed(ctx, ctx->endpoint, &dst, pdu);
   else
