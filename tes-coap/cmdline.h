@@ -39,6 +39,12 @@ static str proxy = { 0, NULL };
 static unsigned short proxy_port = COAP_DEFAULT_PORT;
 
 typedef unsigned char method_t;
+
+extern str the_token;
+extern int flags; 
+extern coap_block_t block;
+extern unsigned int obs_seconds;
+
 //end of declarations
 
 coap_list_t *new_option_node(unsigned short key, unsigned int length, unsigned char *data);

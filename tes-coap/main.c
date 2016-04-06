@@ -44,11 +44,6 @@ coap_tick_t max_wait;                   /* global timeout (changed by set_timeou
 
 coap_tick_t obs_wait = 0;               /* timeout for current subscription */
 
-extern str the_token;
-extern int flags; 
-extern coap_block_t block;
-extern unsigned int obs_seconds;
-
 static inline void
 set_timeout(coap_tick_t *timer, const unsigned int seconds) {
   coap_ticks(timer);
