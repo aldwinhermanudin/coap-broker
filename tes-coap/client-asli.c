@@ -1129,6 +1129,7 @@ main(int argc, char **argv) {
     port = uri.port;
   }
 
+printf("server: %s\n", server.s);
   /* resolve destination address where server should be sent */
   res = resolve_address(&server, &dst.addr.sa);
 

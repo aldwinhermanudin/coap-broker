@@ -8,4 +8,4 @@ coapserver-bintang:
 	gcc coapserver-bintang.c -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX -lcoap-1 -g -o coapserver-bintang
 
 client-coap:
-	gcc coap_list.c client-coap.c -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX -lcoap-1 -g -o client-coap
+	gcc coap-list.c client-coap.c -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX -lcoap-1 -g -o client-coap

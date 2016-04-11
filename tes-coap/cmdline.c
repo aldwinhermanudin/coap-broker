@@ -26,7 +26,7 @@ coap_list_t *new_option_node(unsigned short key,
 	return node;
 }
 
-void cmdline_content_type(char *arg, unsigned short key) {
+void cmdline_content_type(char *arg, unsigned short key, coap_list_t *optlist) {
 	static content_type_t content_types[] = {
 		{  0, "plain" },
 		{  0, "text/plain" },
@@ -91,7 +91,7 @@ void cmdline_content_type(char *arg, unsigned short key) {
 	}
 }
 
-void cmdline_uri(char *arg) {
+void cmdline_uri(char *arg, coap_uri_t *uri, coap_list_t *optlist) {
 	unsigned char portbuf[2];
 	#define BUFSIZE 40
 	unsigned char _buf[BUFSIZE];
@@ -117,18 +117,19 @@ void cmdline_uri(char *arg) {
             (unsigned char *)arg));
 
 	} else {      /* split arg into Uri-* options */
-		coap_split_uri((unsigned char *)arg, strlen(arg), &uri );
+		//coap_split_uri((unsigned char *)arg, strlen(arg), &uri );
+		coap_split_uri((unsigned char *)arg, strlen(arg), uri );
 
-		if (uri.port != COAP_DEFAULT_PORT) {
+		if (uri->port != COAP_DEFAULT_PORT) {
 		coap_insert(&optlist,
 			new_option_node(COAP_OPTION_URI_PORT,
-            coap_encode_var_bytes(portbuf, uri.port),
+            coap_encode_var_bytes(portbuf, uri->port),
             portbuf));
 		}
 
-		if (uri.path.length) {
+		if (uri->path.length) {
 			buflen = BUFSIZE;
-			res = coap_split_path(uri.path.s, uri.path.length, buf, &buflen);
+			res = coap_split_path(uri->path.s, uri->path.length, buf, &buflen);
 
 			while (res--) {
 				coap_insert(&optlist,
@@ -140,10 +141,10 @@ void cmdline_uri(char *arg) {
 			}
 		}
 
-		if (uri.query.length) {
+		if (uri->query.length) {
 			buflen = BUFSIZE;
 			buf = _buf;
-			res = coap_split_query(uri.query.s, uri.query.length, buf, &buflen);
+			res = coap_split_query(uri->query.s, uri->query.length, buf, &buflen);
 
 			while (res--) {
 				coap_insert(&optlist,
@@ -178,7 +179,7 @@ int cmdline_blocksize(char *arg) {
 	return 1;
 }
 
-void cmdline_subscribe(char *arg UNUSED_PARAM) {
+void cmdline_subscribe(char *arg UNUSED_PARAM, coap_list_t *optlist) {
 	//obs_seconds = atoi(optarg);
 	obs_seconds = atoi(arg);
 	coap_insert(&optlist, new_option_node(COAP_OPTION_SUBSCRIPTION, 0, NULL));
@@ -222,7 +223,7 @@ inline void cmdline_token(char *arg) {
 	the_token.length = strlen(arg);
 }
 
-void cmdline_option(char *arg) {
+void cmdline_option(char *arg, coap_list_t *optlist) {
 	unsigned int num = 0;
 
 	while (*arg && *arg != ',') {
@@ -304,7 +305,7 @@ int cmdline_input(char *text, str *buf) {
 	return 1;
 }
 
-int cmdline_input_from_file(char *filename, str *buf) {
+int cmdline_input_from_file(char *filename, unsigned char *buf) {
 	FILE *inputfile = NULL;
 	ssize_t len;
 	int result = 1;

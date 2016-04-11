@@ -30,6 +30,10 @@
 /* reading is done when this flag is set */
 static int ready = 0;
 
+static coap_uri_t uri;
+
+static coap_list_t *optlist = NULL;
+
 static str output_file = { 0, NULL };   /* output file name */
 static FILE *file = NULL;               /* output file stream */
 
@@ -43,12 +47,6 @@ unsigned int wait_seconds = 90;         /* default timeout in seconds */
 coap_tick_t max_wait;                   /* global timeout (changed by set_timeout()) */
 
 coap_tick_t obs_wait = 0;               /* timeout for current subscription */
-
-static inline void
-set_timeout(coap_tick_t *timer, const unsigned int seconds) {
-  coap_ticks(timer);
-  *timer += seconds * COAP_TICKS_PER_SECOND;
-}
 
 static int
 append_to_output(const unsigned char *data, size_t len) {
@@ -74,7 +72,7 @@ append_to_output(const unsigned char *data, size_t len) {
 
   return 0;
 }
-
+  
 static void
 close_output(void) {
   if (file) {
@@ -87,22 +85,13 @@ close_output(void) {
     fclose(file);
   }
 }
-
-static int
-order_opts(void *a, void *b) {
-  coap_option *o1, *o2;
-
-  if (!a || !b)
-    return a < b ? -1 : 1;
-
-  o1 = (coap_option *)(((coap_list_t *)a)->data);
-  o2 = (coap_option *)(((coap_list_t *)b)->data);
-
-  return (COAP_OPTION_KEY(*o1) < COAP_OPTION_KEY(*o2))
-    ? -1
-    : (COAP_OPTION_KEY(*o1) != COAP_OPTION_KEY(*o2));
+  
+static inline int
+check_token(coap_pdu_t *received) {
+  return received->hdr->token_length == the_token.length &&
+    memcmp(received->hdr->token, the_token.s, the_token.length) == 0;
 }
-
+ 
 static coap_pdu_t *
 coap_new_request(coap_context_t *ctx,
                  method_t m,
@@ -148,7 +137,7 @@ coap_new_request(coap_context_t *ctx,
 
   return pdu;
 }
-
+   
 static coap_tid_t
 clear_obs(coap_context_t *ctx,
           const coap_endpoint_t *local_interface,
@@ -231,61 +220,7 @@ clear_obs(coap_context_t *ctx,
   coap_delete_pdu(pdu);
   return tid;
 }
-
-static int
-resolve_address(const str *server, struct sockaddr *dst) {
-
-  struct addrinfo *res, *ainfo;
-  struct addrinfo hints;
-  static char addrstr[256];
-  int error, len=-1;
-
-  memset(addrstr, 0, sizeof(addrstr));
-  if (server->length)
-    memcpy(addrstr, server->s, server->length);
-  else
-    memcpy(addrstr, "localhost", 9);
-
-  memset ((char *)&hints, 0, sizeof(hints));
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_family = AF_UNSPEC;
-
-  error = getaddrinfo(addrstr, NULL, &hints, &res);
-
-  if (error != 0) {
-    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(error));
-    return error;
-  }
-
-  for (ainfo = res; ainfo != NULL; ainfo = ainfo->ai_next) {
-    switch (ainfo->ai_family) {
-    case AF_INET6:
-    case AF_INET:
-      len = ainfo->ai_addrlen;
-      memcpy(dst, ainfo->ai_addr, len);
-      goto finish;
-    default:
-      ;
-    }
-  }
-
- finish:
-  freeaddrinfo(res);
-  return len;
-}
-
-#define HANDLE_BLOCK1(Pdu)                                        \
-  ((method == COAP_REQUEST_PUT || method == COAP_REQUEST_POST) && \
-   ((flags & FLAGS_BLOCK) == 0) &&                                \
-   ((Pdu)->hdr->code == COAP_RESPONSE_CODE(201) ||                \
-    (Pdu)->hdr->code == COAP_RESPONSE_CODE(204)))
-
-static inline int
-check_token(coap_pdu_t *received) {
-  return received->hdr->token_length == the_token.length &&
-    memcmp(received->hdr->token, the_token.s, the_token.length) == 0;
-}
-
+           
 static void
 message_handler(struct coap_context_t *ctx,
                 const coap_endpoint_t *local_interface,
@@ -501,71 +436,46 @@ message_handler(struct coap_context_t *ctx,
   ready = coap_check_option(received, COAP_OPTION_SUBSCRIPTION, &opt_iter) == NULL;
 }
 
-static void
-usage( const char *program, const char *version) {
-  const char *p;
+static int
+resolve_address(const str *server, struct sockaddr *dst) {
 
-  p = strrchr( program, '/' );
-  if ( p )
-    program = ++p;
+  struct addrinfo *res, *ainfo;
+  struct addrinfo hints;
+  static char addrstr[256];
+  int error, len=-1;
 
-  fprintf( stderr, "%s v%s -- a small CoAP implementation\n"
-     "(c) 2010-2015 Olaf Bergmann <bergmann@tzi.org>\n\n"
-     "usage: %s [-A type...] [-t type] [-b [num,]size] [-B seconds] [-e text]\n"
-     "\t\t[-m method] [-N] [-o file] [-P addr[:port]] [-p port]\n"
-     "\t\t[-s duration] [-O num,text] [-T string] [-v num] [-a addr] URI\n\n"
-     "\tURI can be an absolute or relative coap URI,\n"
-     "\t-a addr\tthe local interface address to use\n"
-     "\t-A type...\taccepted media types as comma-separated list of\n"
-     "\t\t\tsymbolic or numeric values\n"
-     "\t-t type\t\tcontent format for given resource for PUT/POST\n"
-     "\t-b [num,]size\tblock size to be used in GET/PUT/POST requests\n"
-     "\t       \t\t(value must be a multiple of 16 not larger than 1024)\n"
-     "\t       \t\tIf num is present, the request chain will start at\n"
-     "\t       \t\tblock num\n"
-     "\t-B seconds\tbreak operation after waiting given seconds\n"
-     "\t\t\t(default is %d)\n"
-     "\t-e text\t\tinclude text as payload (use percent-encoding for\n"
-     "\t\t\tnon-ASCII characters)\n"
-     "\t-f file\t\tfile to send with PUT/POST (use '-' for STDIN)\n"
-     "\t-m method\trequest method (get|put|post|delete), default is 'get'\n"
-     "\t-N\t\tsend NON-confirmable message\n"
-     "\t-o file\t\toutput received data to this file (use '-' for STDOUT)\n"
-     "\t-p port\t\tlisten on specified port\n"
-     "\t-s duration\tsubscribe for given duration [s]\n"
-     "\t-v num\t\tverbosity level (default: 3)\n"
-     "\t-O num,text\tadd option num with contents text to request\n"
-     "\t-P addr[:port]\tuse proxy (automatically adds Proxy-Uri option to\n"
-     "\t\t\trequest)\n"
-     "\t-T token\tinclude specified token\n"
-     "\n"
-     "examples:\n"
-     "\tcoap-client -m get coap://[::1]/\n"
-     "\tcoap-client -m get coap://[::1]/.well-known/core\n"
-     "\tcoap-client -m get -T cafe coap://[::1]/time\n"
-     "\techo 1000 | coap-client -m put -T cafe coap://[::1]/time -f -\n"
-     ,program, version, program, wait_seconds);
-}
+  memset(addrstr, 0, sizeof(addrstr));
+  if (server->length)
+    memcpy(addrstr, server->s, server->length);
+  else
+    memcpy(addrstr, "localhost", 9);
 
-/* Called after processing the options from the commandline to set
- * Block1 or Block2 depending on method. */
-static void
-set_blocksize(void) {
-  static unsigned char buf[4];	/* hack: temporarily take encoded bytes */
-  unsigned short opt;
-  unsigned int opt_length;
+  memset ((char *)&hints, 0, sizeof(hints));
+  hints.ai_socktype = SOCK_DGRAM;
+  hints.ai_family = AF_UNSPEC;
 
-  if (method != COAP_REQUEST_DELETE) {
-    opt = method == COAP_REQUEST_GET ? COAP_OPTION_BLOCK2 : COAP_OPTION_BLOCK1;
+  error = getaddrinfo(addrstr, NULL, &hints, &res);
 
-    block.m = (opt == COAP_OPTION_BLOCK1) &&
-      ((1u << (block.szx + 4)) < payload.length);
-
-    opt_length = coap_encode_var_bytes(buf,
-          (block.num << 4 | block.m << 3 | block.szx));
-
-    coap_insert(&optlist, new_option_node(opt, opt_length, buf));
+  if (error != 0) {
+    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(error));
+    return error;
   }
+
+  for (ainfo = res; ainfo != NULL; ainfo = ainfo->ai_next) {
+    switch (ainfo->ai_family) {
+    case AF_INET6:
+    case AF_INET:
+      len = ainfo->ai_addrlen;
+      memcpy(dst, ainfo->ai_addr, len);
+      goto finish;
+    default:
+      ;
+    }
+  }
+
+ finish:
+  freeaddrinfo(res);
+  return len;
 }
 
 static coap_context_t *
@@ -610,8 +520,7 @@ get_context(const char *node, const char *port) {
   return ctx;
 }
 
-int
-main(int argc, char **argv) {
+int main(int argc, char **argv) {
   coap_context_t  *ctx = NULL;
   coap_address_t dst;
   static char addr[INET6_ADDRSTRLEN];
@@ -643,11 +552,11 @@ main(int argc, char **argv) {
       wait_seconds = atoi(optarg);
       break;
     case 'e' :
-      if (!cmdline_input(optarg,&payload))
+      if (!cmdline_input(optarg, &payload))
         payload.length = 0;
       break;
     case 'f' :
-      if (!cmdline_input_from_file(optarg,&payload))
+      if (!cmdline_input_from_file(optarg, buf))
         payload.length = 0;
       break;
     case 'p' :
@@ -661,7 +570,7 @@ main(int argc, char **argv) {
       msgtype = COAP_MESSAGE_NON;
       break;
     case 's' :
-      cmdline_subscribe(optarg);
+      cmdline_subscribe(optarg, optlist);
       break;
     case 'o' :
       output_file.length = strlen(optarg);
@@ -676,13 +585,13 @@ main(int argc, char **argv) {
       }
       break;
     case 'A' :
-      cmdline_content_type(optarg,COAP_OPTION_ACCEPT);
+      cmdline_content_type(optarg,COAP_OPTION_ACCEPT, optlist);
       break;
     case 't' :
-      cmdline_content_type(optarg,COAP_OPTION_CONTENT_TYPE);
+      cmdline_content_type(optarg,COAP_OPTION_CONTENT_TYPE, optlist);
       break;
     case 'O' :
-      cmdline_option(optarg);
+      cmdline_option(optarg, optlist);
       break;
     case 'P' :
       if (!cmdline_proxy(optarg)) {
@@ -697,15 +606,15 @@ main(int argc, char **argv) {
       log_level = strtol(optarg, NULL, 10);
       break;
     default:
-      usage( argv[0], PACKAGE_VERSION );
+      usage(argv[0], PACKAGE_VERSION, wait_seconds);
       exit( 1 );
     }
   }
-
+	
   coap_set_log_level(log_level);
 
   if ( optind < argc )
-    cmdline_uri( argv[optind] );
+    cmdline_uri(argv[optind], &uri, optlist);
   else {
     usage( argv[0], PACKAGE_VERSION );
     exit( 1 );
@@ -718,8 +627,8 @@ main(int argc, char **argv) {
     server = uri.host;
     port = uri.port;
   }
-  
-printf("1. samppe sini masih ok\n");
+ 
+	
   /* resolve destination address where server should be sent */
   res = resolve_address(&server, &dst.addr.sa);
 
@@ -774,7 +683,7 @@ printf("1. samppe sini masih ok\n");
 
   /* set block option if requested at commandline */
   if (flags & FLAGS_BLOCK)
-    set_blocksize();
+    set_blocksize(method, &payload);
 
   if (! (pdu = coap_new_request(ctx, method, &optlist, payload.s, payload.length)))
     return -1;
@@ -786,7 +695,7 @@ printf("1. samppe sini masih ok\n");
   }
 #endif
 
-	printf("samppe sini masih ok\n");
+	
   if (pdu->hdr->type == COAP_MESSAGE_CON)
     tid = coap_send_confirmed(ctx, ctx->endpoint, &dst, pdu);
   else
@@ -798,6 +707,8 @@ printf("1. samppe sini masih ok\n");
   set_timeout(&max_wait, wait_seconds);
   debug("timeout is set to %d seconds\n", wait_seconds);
 
+	// coap_can_exit(ctx):
+	//Returns 1 if there are no messages to send or to dispatch in the context's queues
   while ( !(ready && coap_can_exit(ctx)) ) {
     FD_ZERO(&readfds);
     FD_SET( ctx->sockfd, &readfds );
@@ -851,10 +762,11 @@ printf("1. samppe sini masih ok\n");
     }
   }
 
-  close_output();
-
+  //close_output(file, &output_file);
+	close_output();
   coap_delete_list(optlist);
   coap_free_context( ctx );
 
   return 0;
 }
+

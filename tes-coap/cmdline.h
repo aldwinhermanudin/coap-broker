@@ -31,10 +31,9 @@ typedef struct {
 } content_type_t;
 
 #define FLAGS_BLOCK 0x01
-static coap_list_t *optlist = NULL;
 /* Request URI.
  * TODO: associate the resources with transaction id and make it expireable */
-static coap_uri_t uri;
+
 static str proxy = { 0, NULL };
 static unsigned short proxy_port = COAP_DEFAULT_PORT;
 
@@ -48,15 +47,16 @@ extern unsigned int obs_seconds;
 //end of declarations
 
 coap_list_t *new_option_node(unsigned short key, unsigned int length, unsigned char *data);
-void cmdline_content_type(char *arg, unsigned short key);
+void cmdline_content_type(char *arg, unsigned short key, coap_list_t *optlist);
+void cmdline_uri(char *arg, coap_uri_t *uri, coap_list_t *optlist);
 int cmdline_blocksize(char *arg);
-void cmdline_subscribe(char *arg UNUSED_PARAM);
+void cmdline_subscribe(char *arg UNUSED_PARAM, coap_list_t *optlist);
 int cmdline_proxy(char *arg);
 inline void cmdline_token(char *arg);
-void cmdline_option(char *arg);
+void cmdline_option(char *arg, coap_list_t *optlist);
 int cmdline_input(char *text, str *buf);
 int check_segment(const unsigned char *s, size_t length);
 void decode_segment(const unsigned char *seg, size_t length, unsigned char *buf);
-int cmdline_input_from_file(char *filename, str *buf);
+int cmdline_input_from_file(char *filename, unsigned char *buf);
 method_t cmdline_method(char *arg);
 #endif //end of CMDLINE_H
