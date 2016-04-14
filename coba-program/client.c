@@ -418,6 +418,12 @@ printf("wewewe\n");
   ambilOption(received);
   printf("tes ambil ------------------------------------\n");
   printf("\nooo\n");
+  printf("\nyang ini nih payloadnya: %s\n", received->data);
+  //coap_show_pdu(received);
+  coap_get_data(received, &len, &databuf);
+  printf("\ndari coap data get: %s\n", databuf);
+  printf("size:  %zu\n", len);
+  printf("-------------------------------------------------\n");
   if (LOG_DEBUG <= coap_get_log_level()) {
     printf("masuk shit\n");
     debug("** process incoming %d.%02d response:\n",
@@ -1350,9 +1356,10 @@ printf("tes\n");
       }
     }
   }
-
+	
+	
   close_output();
-
+	
   coap_delete_list(optlist);
   coap_free_context( ctx );
 
