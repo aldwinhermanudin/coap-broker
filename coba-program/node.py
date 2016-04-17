@@ -1,7 +1,7 @@
 import serial
 import struct
 import sys
-ser = serial.Serial('/dev/ttyUSB1', 9600)
+ser = serial.Serial('/dev/ttyUSB0', 9600)
 pin = int(sys.argv[2])
 val = int(sys.argv[3])
 if sys.argv[1] == 'GPIO':

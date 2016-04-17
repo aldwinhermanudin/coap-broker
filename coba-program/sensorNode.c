@@ -34,7 +34,8 @@ void turnGPIO(unsigned char pin, bool onOff) {
 	sprintf(pinStr, "%d", pin);
 	c = concat(pinStr, (onOff ? " 1" : " 0"));
 	command = concat("python node.py GPIO ", c);
-	system(command);
+	if (system(command) == -1)
+		error("Error");	
 	free(command);
 }
 
@@ -52,6 +53,7 @@ void setPWM(unsigned char pin, unsigned char value) {
 	sprintf(val, " %d", value);
 	c = concat(pinStr, val);
 	command = concat("python node.py PWM ", c);
-	system(command);
+	if (system(command) == -1)
+		error("Error");	
 	free(command);
 }

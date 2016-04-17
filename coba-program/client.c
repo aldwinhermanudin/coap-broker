@@ -313,6 +313,14 @@ check_token(coap_pdu_t *received) {
     memcmp(received->hdr->token, the_token.s, the_token.length) == 0;
 }
 
+void queryToInt(char *query, unsigned int len) {
+	unsigned int i;
+	char x;
+	for (i = 0; i < len; i++) {
+		if (query)
+	}
+}
+
 void ambilOption(const coap_pdu_t *pdu) {
 	unsigned char buf[COAP_MAX_PDU_SIZE]; /* need some space for output creation */
     size_t buf_len = 0; /* takes the number of bytes written to buf */
@@ -330,6 +338,7 @@ void ambilOption(const coap_pdu_t *pdu) {
        
        switch (opt_iter.type) {
 			case COAP_OPTION_MAXAGE: 
+				printf("coap_opt_value: %s\n", coap_opt_value(option));
 				buf_len = snprintf((char *)buf, sizeof(buf), "%u",
                 coap_decode_var_bytes(COAP_OPT_VALUE(option),
                               COAP_OPT_LENGTH(option)));
@@ -782,8 +791,18 @@ cmdline_uri(char *arg) {
                 (unsigned char *)arg));
 
   } else {      /* split arg into Uri-* options */
+	  //bintang's stuff
+	printf("EXPERIMENTING WITH URI\n");
+    printf("uri.host: %s\n", uri.host.s);
+    printf("uri.path.path: %s\n", uri.path.s);
+    printf("uri.query.path: %s\n", uri.query.s);
       coap_split_uri((unsigned char *)arg, strlen(arg), &uri );
-
+	printf("EXPERIMENTING WITH URI\n");
+    printf("uri.host: %s\n", uri.host.s);
+    printf("uri.path.path: %s\n", uri.path.s);
+    printf("uri.query.path: %s\n", uri.query.s);
+	
+	//end of bintang's stuff
     if (uri.port != COAP_DEFAULT_PORT) {
       coap_insert(&optlist,
                   new_option_node(COAP_OPTION_URI_PORT,
@@ -800,7 +819,7 @@ cmdline_uri(char *arg) {
                     new_option_node(COAP_OPTION_URI_PATH,
                     COAP_OPT_LENGTH(buf),
                     COAP_OPT_VALUE(buf)));
-
+		printf("buf di coap_split_path: %s\n", buf);
         buf += COAP_OPT_SIZE(buf);
       }
     }
@@ -1210,6 +1229,7 @@ main(int argc, char **argv) {
 
   coap_set_log_level(log_level);
 
+printf("nyampah: %s\n", argv[optind]);
   if ( optind < argc )
     cmdline_uri( argv[optind] );
   else {
@@ -1225,6 +1245,7 @@ main(int argc, char **argv) {
     port = uri.port;
   }
 
+	
   /* resolve destination address where server should be sent */
   res = resolve_address(&server, &dst.addr.sa);
 

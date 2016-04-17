@@ -4,6 +4,46 @@
 #include "coap.h"
 #include "sensorNode.h"
 
+int queryToInt(char *query, unsigned int len) {
+	unsigned int i;
+	char x;
+	int result;
+	
+	for (i = 0; i < len; i++) {
+		if (query[i] >= 48 && query[i] <= 57) {
+			break;
+		}
+	}
+	result = query[i++] - '0';
+	for (; i < len; i++) {
+		result = result * 10 + (query[i] - '0');
+	}
+	return result;
+} 
+
+void queryValue(const coap_pdu_t *pdu) {
+	unsigned char buf[COAP_MAX_PDU_SIZE]; /* need some space for output creation */
+    size_t buf_len = 0; /* takes the number of bytes written to buf */
+    int encode = 0, have_options = 0, i, j, age;
+    coap_opt_iterator_t opt_iter;
+    coap_opt_t *option;
+    int content_format = -1;
+    size_t data_len;
+    unsigned char *data;
+
+	coap_option_iterator_init((coap_pdu_t *)pdu, &opt_iter, COAP_OPT_ALL);
+	
+	while ((option = coap_option_next(&opt_iter))) {
+       switch (opt_iter.type) {
+			case COAP_OPTION_URI_QUERY:
+				printf("coap_opt_value: %s\n", coap_opt_value(option));
+				//return queryToInt(coap_opt_value(option), 
+					//strlen(coap_opt_value(option)));	
+			break;
+	   }
+    }
+}
+
 /**
  * This function prepares the index resource
  * 
@@ -50,7 +90,7 @@ index_handler(coap_context_t *ctx,
 }
 
 static void
-sensor_adc_handler(coap_context_t *ctx,
+sensor_handler(coap_context_t *ctx,
               struct coap_resource_t *resource,
               const coap_endpoint_t *local_interface,
               coap_address_t *peer,
@@ -62,7 +102,7 @@ sensor_adc_handler(coap_context_t *ctx,
     unsigned short val;
     unsigned char buf[3];
     
-    val = getADC(1);
+    val = getADC(0);
     //val = 1000;
     sprintf(index, "%d", val);
     response->hdr->code = COAP_RESPONSE_CODE(205); // Why 205?
@@ -75,6 +115,41 @@ sensor_adc_handler(coap_context_t *ctx,
                   coap_encode_var_bytes(buf, 60), buf);
     
     coap_add_data(response, strlen(index), (unsigned char *)index);
+}
+
+static void
+actuator_handler(coap_context_t *ctx,
+              struct coap_resource_t *resource,
+              const coap_endpoint_t *local_interface,
+              coap_address_t *peer,
+              coap_pdu_t *request,
+              str *token,
+              coap_pdu_t *response) {
+
+    char index[7];
+    unsigned short val;
+    unsigned char buf[3];
+    
+    turnGPIO(3, 0);
+    queryValue(request);
+    //printf("value of query: %d\n", queryValue(request));
+    strcpy(index, "sukses");
+    response->hdr->code = COAP_RESPONSE_CODE(205); // Why 205?
+    
+    coap_add_option(response,
+                  COAP_OPTION_CONTENT_TYPE,
+                  coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
+    coap_add_option(response,
+                  COAP_OPTION_MAXAGE,
+                  coap_encode_var_bytes(buf, 60), buf);
+    
+    coap_add_data(response, strlen(index), (unsigned char *)index);
+    printf("token: %s\n", token->s);
+    printf("pdu request data: %s\n", request->data);
+    printf("resource uri: %s\n", resource->uri.s);
+    //printf("resource link attr value: %d\n", resource->link);
+    printf("ambilOprion:\n");
+    //ambilOption(request);
 }
 
 int main(int argc, char* argv[]){
@@ -128,10 +203,14 @@ int main(int argc, char* argv[]){
      */
     coap_add_resource(ctx, index);
     
-    index = coap_resource_init((unsigned char *)"sensor/adc", strlen("sensor/adc"), 0);
-    coap_register_handler(index, COAP_REQUEST_GET,  sensor_adc_handler);
+    index = coap_resource_init((unsigned char *)"sensor", strlen("sensor"), 0);
+    coap_register_handler(index, COAP_REQUEST_GET, sensor_handler);
     coap_add_resource(ctx, index);
     
+    index = coap_resource_init((unsigned char *)"actuator", strlen("actuator"), 0);
+    coap_register_handler(index, COAP_REQUEST_GET, actuator_handler);
+    coap_add_resource(ctx, index);
+    printf("index uri: %s\n", index->uri.s);
     while (1) {
         FD_ZERO(&readfds);
         FD_SET( ctx->sockfd, &readfds );
