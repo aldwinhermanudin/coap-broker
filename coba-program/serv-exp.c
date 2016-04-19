@@ -4,9 +4,8 @@
 #include "coap.h"
 #include "sensorNode.h"
 
-int queryToInt(char *query, unsigned int len) {
+int queryValToInt(char *query, unsigned int len) {
 	unsigned int i;
-	char x;
 	int result;
 	
 	for (i = 0; i < len; i++) {
@@ -21,25 +20,27 @@ int queryToInt(char *query, unsigned int len) {
 	return result;
 } 
 
-void queryValue(const coap_pdu_t *pdu) {
+int queryToInt(const coap_pdu_t *pdu) {
 	unsigned char buf[COAP_MAX_PDU_SIZE]; /* need some space for output creation */
     size_t buf_len = 0; /* takes the number of bytes written to buf */
-    int encode = 0, have_options = 0, i, j, age;
+    int have_options = 0, i, j;
     coap_opt_iterator_t opt_iter;
     coap_opt_t *option;
     int content_format = -1;
     size_t data_len;
     unsigned char *data;
+    char query[10];
 
 	coap_option_iterator_init((coap_pdu_t *)pdu, &opt_iter, COAP_OPT_ALL);
 	
 	while ((option = coap_option_next(&opt_iter))) {
        switch (opt_iter.type) {
 			case COAP_OPTION_URI_QUERY:
-				printf("coap_opt_value: %s\n", coap_opt_value(option));
-				//return queryToInt(coap_opt_value(option), 
-					//strlen(coap_opt_value(option)));	
-			break;
+				query[0] = '\0';
+				strcpy(query, coap_opt_value(option));
+				printf("coap_opt_value: %s\n", query);
+				return queryValToInt(coap_opt_value(option), 
+					strlen(coap_opt_value(option)));
 	   }
     }
 }
@@ -118,7 +119,7 @@ sensor_handler(coap_context_t *ctx,
 }
 
 static void
-actuator_handler(coap_context_t *ctx,
+actuator_gpio_handler(coap_context_t *ctx,
               struct coap_resource_t *resource,
               const coap_endpoint_t *local_interface,
               coap_address_t *peer,
@@ -127,11 +128,48 @@ actuator_handler(coap_context_t *ctx,
               coap_pdu_t *response) {
 
     char index[7];
-    unsigned short val;
+    unsigned int val;
     unsigned char buf[3];
     
-    turnGPIO(3, 0);
-    queryValue(request);
+    val = queryToInt(request);
+    turnGPIO(3, val);
+    
+    //printf("value of query: %d\n", queryValue(request));
+    strcpy(index, "sukses");
+    response->hdr->code = COAP_RESPONSE_CODE(205); // Why 205?
+    
+    coap_add_option(response,
+                  COAP_OPTION_CONTENT_TYPE,
+                  coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
+    coap_add_option(response,
+                  COAP_OPTION_MAXAGE,
+                  coap_encode_var_bytes(buf, 60), buf);
+    
+    coap_add_data(response, strlen(index), (unsigned char *)index);
+    printf("token: %s\n", token->s);
+    printf("pdu request data: %s\n", request->data);
+    printf("resource uri: %s\n", resource->uri.s);
+    //printf("resource link attr value: %d\n", resource->link);
+    printf("ambilOprion:\n");
+    //ambilOption(request);
+}
+
+static void
+actuator_pwm_handler(coap_context_t *ctx,
+              struct coap_resource_t *resource,
+              const coap_endpoint_t *local_interface,
+              coap_address_t *peer,
+              coap_pdu_t *request,
+              str *token,
+              coap_pdu_t *response) {
+
+    char index[7];
+    unsigned int val;
+    unsigned char buf[3];
+    
+    val = queryToInt(request);
+    setPWM(9, val);
+    
     //printf("value of query: %d\n", queryValue(request));
     strcpy(index, "sukses");
     response->hdr->code = COAP_RESPONSE_CODE(205); // Why 205?
@@ -167,50 +205,22 @@ int main(int argc, char* argv[]){
     if (!ctx)
         exit(EXIT_FAILURE);
     
-    /* coap_resource_init(): Creates a new resource object and initializes the link field to the string of length len
-     * coap_resource_init(const unsigned char * uri, 
-     * 			size_t  len, 
-     * 			int  flags )
-     * 
-     * uri	The URI path of the new resource.
-     * len	The length of uri.
-     * flags	Flags for memory management (in particular release of memory).
-     */
     index = coap_resource_init(NULL, 0, 0);
-    
-    /* coap_register_handler(coap_resource_t *resource,
-     * 			unsigned char method,
-     * 			coap_method_handler_t handler)
-     * 
-     * resource	The resource for which the handler shall be registered.
-     * method	The CoAP request method to handle.
-     * handler	The handler to register with resource.  
-     * 
-     * Registers the specified handler as message handler for the request type method
-     */
     coap_register_handler(index, COAP_REQUEST_GET, index_handler);
-    
-    /* void coap_add_resource 	(coap_context_t *  	context, 
-     * 		coap_resource_t *  	resource) 	
-     * 
-     * Parameters
-     * context	The context to use.
-     * resource	The resource to store. 
-     * 
-     * Registers the given resource for context.
-     * The resource must have been created by coap_resource_init(), 
-     * the storage allocated for the resource will be released by coap_delete_resource().
-     */
     coap_add_resource(ctx, index);
     
     index = coap_resource_init((unsigned char *)"sensor", strlen("sensor"), 0);
     coap_register_handler(index, COAP_REQUEST_GET, sensor_handler);
     coap_add_resource(ctx, index);
     
-    index = coap_resource_init((unsigned char *)"actuator", strlen("actuator"), 0);
-    coap_register_handler(index, COAP_REQUEST_GET, actuator_handler);
+    index = coap_resource_init((unsigned char *)"gpio", strlen("gpio"), 0);
+    coap_register_handler(index, COAP_REQUEST_GET, actuator_gpio_handler);
     coap_add_resource(ctx, index);
-    printf("index uri: %s\n", index->uri.s);
+    
+    index = coap_resource_init((unsigned char *)"pwm", strlen("pwm"), 0);
+    coap_register_handler(index, COAP_REQUEST_GET, actuator_pwm_handler);
+    coap_add_resource(ctx, index);
+    
     while (1) {
         FD_ZERO(&readfds);
         FD_SET( ctx->sockfd, &readfds );

@@ -42,7 +42,7 @@ void turnGPIO(unsigned char pin, bool onOff) {
 //PWM: 3, 5, 6, 9, 10, and 11
 void setPWM(unsigned char pin, unsigned char value) {
 	char *command, *c;
-	char pinStr[3], val[4];
+	char pinStr[3], val[5];
 	
 	if (pin != 3 && pin != 5 && pin != 6 && 
 		pin != 9 && pin != 10 && pin != 11) {

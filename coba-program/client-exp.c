@@ -1,13 +1,3 @@
-/* -*- Mode: C; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 * -*- */
-
-/* coap-client -- simple CoAP client
- *
- * Copyright (C) 2010--2015 Olaf Bergmann <bergmann@tzi.org>
- *
- * This file is part of the CoAP library libcoap. Please see README for terms of
- * use.
- */
-
 #include "coap_config.h"
 
 #include <string.h>
@@ -32,6 +22,8 @@ static unsigned char _token_data[8];
 str the_token = { 0, _token_data };
 
 #define FLAGS_BLOCK 0x01
+
+#define NDEBUG 0
 
 static coap_list_t *optlist = NULL;
 /* Request URI.
@@ -149,7 +141,7 @@ coap_new_request(coap_context_t *ctx,
     debug("cannot add token to request\n");
   }
 
-  coap_show_pdu(pdu);
+  coap_show_pdu(pdu); //disini nih v:1 t:CON dsb
 
   if (options) {
     /* sort options for delta encoding */
@@ -311,6 +303,88 @@ check_token(coap_pdu_t *received) {
     memcmp(received->hdr->token, the_token.s, the_token.length) == 0;
 }
 
+void ambilOption(const coap_pdu_t *pdu) {
+	unsigned char buf[COAP_MAX_PDU_SIZE]; /* need some space for output creation */
+    size_t buf_len = 0; /* takes the number of bytes written to buf */
+    int encode = 0, have_options = 0, i, j, age;
+    coap_opt_iterator_t opt_iter;
+    coap_opt_t *option;
+    int content_format = -1;
+    size_t data_len;
+    unsigned char *data;
+
+	coap_option_iterator_init((coap_pdu_t *)pdu, &opt_iter, COAP_OPT_ALL);
+	
+	while ((option = coap_option_next(&opt_iter))) {
+       
+       
+       switch (opt_iter.type) {
+			case COAP_OPTION_MAXAGE: 
+				printf("coap_opt_value: %s\n", coap_opt_value(option));
+				buf_len = snprintf((char *)buf, sizeof(buf), "%u",
+                coap_decode_var_bytes(COAP_OPT_VALUE(option),
+                              COAP_OPT_LENGTH(option)));
+                 printf("%s, %zu\n", buf, strlen(buf));
+                 age = atoi(buf);
+                 printf("dalam integer: %d\n", age);
+                 
+				break;
+	   }
+   
+       /*switch (opt_iter.type) {
+       case COAP_OPTION_CONTENT_FORMAT:
+         content_format = (int)coap_decode_var_bytes(COAP_OPT_VALUE(option),
+                             COAP_OPT_LENGTH(option));
+   
+         buf_len = print_content_format(content_format, buf, sizeof(buf));
+         break;
+   
+       case COAP_OPTION_BLOCK1:
+       case COAP_OPTION_BLOCK2:
+         // split block option into number/more/size where more is the
+          // letter M if set, the _ otherwise 
+         buf_len = snprintf((char *)buf, sizeof(buf), "%u/%c/%u",
+                coap_opt_block_num(option), // block number 
+                COAP_OPT_BLOCK_MORE(option) ? 'M' : '_', // M bit 
+                (2 << (COAP_OPT_BLOCK_SZX(option) + 4))); // block size 
+   
+         break;
+   
+       case COAP_OPTION_URI_PORT:
+       case COAP_OPTION_MAXAGE:
+       case COAP_OPTION_OBSERVE:
+       case COAP_OPTION_SIZE1:
+         // show values as unsigned decimal value 
+         buf_len = snprintf((char *)buf, sizeof(buf), "%u",
+                coap_decode_var_bytes(COAP_OPT_VALUE(option),
+                              COAP_OPT_LENGTH(option)));
+         break;
+   
+       default:
+         // generic output function for all other option types 
+         if (opt_iter.type == COAP_OPTION_URI_PATH ||
+         opt_iter.type == COAP_OPTION_PROXY_URI ||
+         opt_iter.type == COAP_OPTION_URI_HOST ||
+         opt_iter.type == COAP_OPTION_LOCATION_PATH ||
+         opt_iter.type == COAP_OPTION_LOCATION_QUERY ||
+         opt_iter.type == COAP_OPTION_URI_QUERY) {
+       encode = 0;
+         } else {
+       encode = 1;
+         }
+   
+         buf_len = print_readable(COAP_OPT_VALUE(option),
+                      COAP_OPT_LENGTH(option),
+                      buf, sizeof(buf), encode);
+       }
+   
+       fprintf(COAP_DEBUG_FD, " %s:%.*s", msg_option_string(opt_iter.type),
+           (int)buf_len, buf);
+		*/
+     }
+     
+}
+
 static void
 message_handler(struct coap_context_t *ctx,
                 const coap_endpoint_t *local_interface,
@@ -328,13 +402,26 @@ message_handler(struct coap_context_t *ctx,
   unsigned char *databuf;
   coap_tid_t tid;
 
-#ifndef NDEBUG
+//#ifndef NDEBUG
+printf("wewewe\n");
+  coap_show_pdu(received);
+  printf("tes ambil ------------------------------------\n");
+  ambilOption(received);
+  printf("tes ambil ------------------------------------\n");
+  printf("\nooo\n");
+  printf("\nyang ini nih payloadnya: %s\n", received->data);
+  //coap_show_pdu(received);
+  coap_get_data(received, &len, &databuf);
+  printf("\ndari coap data get: %s\n", databuf);
+  printf("size:  %zu\n", len);
+  printf("-------------------------------------------------\n");
   if (LOG_DEBUG <= coap_get_log_level()) {
+    printf("masuk shit\n");
     debug("** process incoming %d.%02d response:\n",
           (received->hdr->code >> 5), received->hdr->code & 0x1F);
-    coap_show_pdu(received);
+    coap_show_pdu(received); //hmm hmm
   }
-#endif
+//#endif
 
   /* check if this is a response to our original request */
   if (!check_token(received)) {
@@ -686,8 +773,18 @@ cmdline_uri(char *arg) {
                 (unsigned char *)arg));
 
   } else {      /* split arg into Uri-* options */
+	  //bintang's stuff
+	printf("EXPERIMENTING WITH URI\n");
+    printf("uri.host: %s\n", uri.host.s);
+    printf("uri.path.path: %s\n", uri.path.s);
+    printf("uri.query.path: %s\n", uri.query.s);
       coap_split_uri((unsigned char *)arg, strlen(arg), &uri );
-
+	printf("EXPERIMENTING WITH URI\n");
+    printf("uri.host: %s\n", uri.host.s);
+    printf("uri.path.path: %s\n", uri.path.s);
+    printf("uri.query.path: %s\n", uri.query.s);
+	
+	//end of bintang's stuff
     if (uri.port != COAP_DEFAULT_PORT) {
       coap_insert(&optlist,
                   new_option_node(COAP_OPTION_URI_PORT,
@@ -704,7 +801,7 @@ cmdline_uri(char *arg) {
                     new_option_node(COAP_OPTION_URI_PATH,
                     COAP_OPT_LENGTH(buf),
                     COAP_OPT_VALUE(buf)));
-
+		printf("buf di coap_split_path: %s\n", buf);
         buf += COAP_OPT_SIZE(buf);
       }
     }
@@ -1114,6 +1211,7 @@ main(int argc, char **argv) {
 
   coap_set_log_level(log_level);
 
+printf("nyampah: %s\n", argv[optind]);
   if ( optind < argc )
     cmdline_uri( argv[optind] );
   else {
@@ -1129,6 +1227,7 @@ main(int argc, char **argv) {
     port = uri.port;
   }
 
+	
   /* resolve destination address where server should be sent */
   res = resolve_address(&server, &dst.addr.sa);
 
@@ -1185,11 +1284,12 @@ main(int argc, char **argv) {
   if (flags & FLAGS_BLOCK)
     set_blocksize();
 
-  if (! (pdu = coap_new_request(ctx, method, &optlist, payload.s, payload.length)))
+  if (! (pdu = coap_new_request(ctx, method, &optlist, payload.s, payload.length))) //ini yang v :1 t:CON ...
     return -1;
-
+printf("tes\n");
 #ifndef NDEBUG
   if (LOG_DEBUG <= coap_get_log_level()) {
+	  printf("masuk men\n");
     debug("sending CoAP request:\n");
     coap_show_pdu(pdu);
   }
@@ -1207,6 +1307,7 @@ main(int argc, char **argv) {
   debug("timeout is set to %d seconds\n", wait_seconds);
 
   while ( !(ready && coap_can_exit(ctx)) ) {
+
     FD_ZERO(&readfds);
     FD_SET( ctx->sockfd, &readfds );
 
@@ -1258,9 +1359,10 @@ main(int argc, char **argv) {
       }
     }
   }
-
+	
+	
   close_output();
-
+	
   coap_delete_list(optlist);
   coap_free_context( ctx );
 
