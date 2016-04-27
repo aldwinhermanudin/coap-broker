@@ -141,7 +141,7 @@ coap_new_request(coap_context_t *ctx,
     debug("cannot add token to request\n");
   }
 
-  coap_show_pdu(pdu); //disini nih v:1 t:CON dsb
+  //coap_show_pdu(pdu); //disini nih v:1 t:CON dsb
 
   if (options) {
     /* sort options for delta encoding */
@@ -303,16 +303,13 @@ check_token(coap_pdu_t *received) {
     memcmp(received->hdr->token, the_token.s, the_token.length) == 0;
 }
 
-void ambilOption(const coap_pdu_t *pdu) {
+int ambilMaxAge(const coap_pdu_t *pdu) {
 	unsigned char buf[COAP_MAX_PDU_SIZE]; /* need some space for output creation */
     size_t buf_len = 0; /* takes the number of bytes written to buf */
-    int encode = 0, have_options = 0, i, j, age;
+    int age;
     coap_opt_iterator_t opt_iter;
     coap_opt_t *option;
-    int content_format = -1;
-    size_t data_len;
-    unsigned char *data;
-
+    
 	coap_option_iterator_init((coap_pdu_t *)pdu, &opt_iter, COAP_OPT_ALL);
 	
 	while ((option = coap_option_next(&opt_iter))) {
@@ -320,69 +317,28 @@ void ambilOption(const coap_pdu_t *pdu) {
        
        switch (opt_iter.type) {
 			case COAP_OPTION_MAXAGE: 
-				printf("coap_opt_value: %s\n", coap_opt_value(option));
+				//printf("coap_opt_value: %s\n", coap_opt_value(option));
 				buf_len = snprintf((char *)buf, sizeof(buf), "%u",
                 coap_decode_var_bytes(COAP_OPT_VALUE(option),
                               COAP_OPT_LENGTH(option)));
-                 printf("%s, %zu\n", buf, strlen(buf));
+                 //printf("%s, %zu\n", buf, strlen(buf));
                  age = atoi(buf);
-                 printf("dalam integer: %d\n", age);
-                 
+                 return age;                 
 				break;
 	   }
-   
-       /*switch (opt_iter.type) {
-       case COAP_OPTION_CONTENT_FORMAT:
-         content_format = (int)coap_decode_var_bytes(COAP_OPT_VALUE(option),
-                             COAP_OPT_LENGTH(option));
-   
-         buf_len = print_content_format(content_format, buf, sizeof(buf));
-         break;
-   
-       case COAP_OPTION_BLOCK1:
-       case COAP_OPTION_BLOCK2:
-         // split block option into number/more/size where more is the
-          // letter M if set, the _ otherwise 
-         buf_len = snprintf((char *)buf, sizeof(buf), "%u/%c/%u",
-                coap_opt_block_num(option), // block number 
-                COAP_OPT_BLOCK_MORE(option) ? 'M' : '_', // M bit 
-                (2 << (COAP_OPT_BLOCK_SZX(option) + 4))); // block size 
-   
-         break;
-   
-       case COAP_OPTION_URI_PORT:
-       case COAP_OPTION_MAXAGE:
-       case COAP_OPTION_OBSERVE:
-       case COAP_OPTION_SIZE1:
-         // show values as unsigned decimal value 
-         buf_len = snprintf((char *)buf, sizeof(buf), "%u",
-                coap_decode_var_bytes(COAP_OPT_VALUE(option),
-                              COAP_OPT_LENGTH(option)));
-         break;
-   
-       default:
-         // generic output function for all other option types 
-         if (opt_iter.type == COAP_OPTION_URI_PATH ||
-         opt_iter.type == COAP_OPTION_PROXY_URI ||
-         opt_iter.type == COAP_OPTION_URI_HOST ||
-         opt_iter.type == COAP_OPTION_LOCATION_PATH ||
-         opt_iter.type == COAP_OPTION_LOCATION_QUERY ||
-         opt_iter.type == COAP_OPTION_URI_QUERY) {
-       encode = 0;
-         } else {
-       encode = 1;
-         }
-   
-         buf_len = print_readable(COAP_OPT_VALUE(option),
-                      COAP_OPT_LENGTH(option),
-                      buf, sizeof(buf), encode);
-       }
-   
-       fprintf(COAP_DEBUG_FD, " %s:%.*s", msg_option_string(opt_iter.type),
-           (int)buf_len, buf);
-		*/
      }
      
+}
+
+void getTheRealPayload(char *result, char *raw, size_t length) {
+	int i = 0;
+	printf("shit men: %zu\n", length);
+	for (i = 0; i < length; i++) {
+		result[i] = raw[i];
+		printf("%c\n", result[i]);
+	}
+	result[i] = '\0';
+	printf("string: %s\nstrlen: %d\n", result, (int)strlen(result));
 }
 
 static void
@@ -401,27 +357,23 @@ message_handler(struct coap_context_t *ctx,
   size_t len;
   unsigned char *databuf;
   coap_tid_t tid;
+  
+  //tambahan
+  char res[10];
+  int tai;
 
-//#ifndef NDEBUG
-printf("wewewe\n");
-  coap_show_pdu(received);
-  printf("tes ambil ------------------------------------\n");
-  ambilOption(received);
-  printf("tes ambil ------------------------------------\n");
-  printf("\nooo\n");
-  printf("\nyang ini nih payloadnya: %s\n", received->data);
-  //coap_show_pdu(received);
+#ifndef NDEBUG
   coap_get_data(received, &len, &databuf);
-  printf("\ndari coap data get: %s\n", databuf);
-  printf("size:  %zu\n", len);
-  printf("-------------------------------------------------\n");
+  databuf[len] = '\0';
+  strncpy(res, databuf, len);
+  printf("the real payload: %s\n", res);
   if (LOG_DEBUG <= coap_get_log_level()) {
     printf("masuk shit\n");
     debug("** process incoming %d.%02d response:\n",
           (received->hdr->code >> 5), received->hdr->code & 0x1F);
     coap_show_pdu(received); //hmm hmm
   }
-//#endif
+#endif
 
   /* check if this is a response to our original request */
   if (!check_token(received)) {
@@ -564,7 +516,7 @@ printf("wewewe\n");
                          payload.s,
                          block.num,
                          block.szx);
-          coap_show_pdu(pdu);
+          //coap_show_pdu(pdu);
           if (pdu->hdr->type == COAP_MESSAGE_CON)
             tid = coap_send_confirmed(ctx, local_interface, remote, pdu);
           else
@@ -583,8 +535,12 @@ printf("wewewe\n");
         }
       } else {
         /* There is no block option set, just read the data and we are done. */
-        if (coap_get_data(received, &len, &databuf))
-        append_to_output(databuf, len);
+        if (coap_get_data(received, &len, &databuf)) {
+			//append_to_output(databuf, len); //ini nih yang print payload
+			databuf[len] = '\0';
+			tai = ambilMaxAge(received);
+			printf("data: %s-%d", databuf, tai);
+		}
       }
     }
   } else {      /* no 2.05 */
@@ -608,7 +564,7 @@ printf("wewewe\n");
     debug("message_handler: error sending response");
   }
   coap_delete_pdu(pdu);
-
+	
   /* our job is done, we can exit at any time */
   ready = coap_check_option(received, COAP_OPTION_SUBSCRIPTION, &opt_iter) == NULL;
 }
@@ -773,19 +729,9 @@ cmdline_uri(char *arg) {
                 (unsigned char *)arg));
 
   } else {      /* split arg into Uri-* options */
-	  //bintang's stuff
-	printf("EXPERIMENTING WITH URI\n");
-    printf("uri.host: %s\n", uri.host.s);
-    printf("uri.path.path: %s\n", uri.path.s);
-    printf("uri.query.path: %s\n", uri.query.s);
-      coap_split_uri((unsigned char *)arg, strlen(arg), &uri );
-	printf("EXPERIMENTING WITH URI\n");
-    printf("uri.host: %s\n", uri.host.s);
-    printf("uri.path.path: %s\n", uri.path.s);
-    printf("uri.query.path: %s\n", uri.query.s);
+	  coap_split_uri((unsigned char *)arg, strlen(arg), &uri );
 	
-	//end of bintang's stuff
-    if (uri.port != COAP_DEFAULT_PORT) {
+	if (uri.port != COAP_DEFAULT_PORT) {
       coap_insert(&optlist,
                   new_option_node(COAP_OPTION_URI_PORT,
                   coap_encode_var_bytes(portbuf, uri.port),
@@ -801,8 +747,7 @@ cmdline_uri(char *arg) {
                     new_option_node(COAP_OPTION_URI_PATH,
                     COAP_OPT_LENGTH(buf),
                     COAP_OPT_VALUE(buf)));
-		printf("buf di coap_split_path: %s\n", buf);
-        buf += COAP_OPT_SIZE(buf);
+		buf += COAP_OPT_SIZE(buf);
       }
     }
 
@@ -1211,7 +1156,6 @@ main(int argc, char **argv) {
 
   coap_set_log_level(log_level);
 
-printf("nyampah: %s\n", argv[optind]);
   if ( optind < argc )
     cmdline_uri( argv[optind] );
   else {
@@ -1286,12 +1230,11 @@ printf("nyampah: %s\n", argv[optind]);
 
   if (! (pdu = coap_new_request(ctx, method, &optlist, payload.s, payload.length))) //ini yang v :1 t:CON ...
     return -1;
-printf("tes\n");
+
 #ifndef NDEBUG
   if (LOG_DEBUG <= coap_get_log_level()) {
-	  printf("masuk men\n");
     debug("sending CoAP request:\n");
-    coap_show_pdu(pdu);
+    //coap_show_pdu(pdu);
   }
 #endif
 
@@ -1346,6 +1289,8 @@ printf("tes\n");
     } else { /* timeout */
       coap_ticks(&now);
       if (max_wait <= now) {
+		  //tambahan
+		  printf("504 gateway timeout\n");
         info("timeout\n");
         break;
       }

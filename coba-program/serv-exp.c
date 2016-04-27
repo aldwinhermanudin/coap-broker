@@ -132,6 +132,7 @@ actuator_gpio_handler(coap_context_t *ctx,
     unsigned char buf[3];
     
     val = queryToInt(request);
+    printf("%d\n", val);
     turnGPIO(3, val);
     
     //printf("value of query: %d\n", queryValue(request));
