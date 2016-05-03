@@ -539,7 +539,7 @@ message_handler(struct coap_context_t *ctx,
 			//append_to_output(databuf, len); //ini nih yang print payload
 			databuf[len] = '\0';
 			tai = ambilMaxAge(received);
-			printf("%s-%d", databuf, tai);
+			printf("data: %s-%d", databuf, tai);
 		}
       }
     }
