@@ -15,30 +15,22 @@ int queryValToInt(char *query, unsigned int len) {
 	}
 	result = query[i++] - '0';
 	for (; i < len; i++) {
+		if (query[i] < '0' || query[i] > '9')
+			break;
 		result = result * 10 + (query[i] - '0');
 	}
 	return result;
 } 
 
 int queryToInt(const coap_pdu_t *pdu) {
-	unsigned char buf[COAP_MAX_PDU_SIZE]; /* need some space for output creation */
-    size_t buf_len = 0; /* takes the number of bytes written to buf */
-    int have_options = 0, i, j;
-    coap_opt_iterator_t opt_iter;
+	coap_opt_iterator_t opt_iter;
     coap_opt_t *option;
-    int content_format = -1;
-    size_t data_len;
-    unsigned char *data;
-    char query[10];
-
+    
 	coap_option_iterator_init((coap_pdu_t *)pdu, &opt_iter, COAP_OPT_ALL);
 	
 	while ((option = coap_option_next(&opt_iter))) {
        switch (opt_iter.type) {
 			case COAP_OPTION_URI_QUERY:
-				query[0] = '\0';
-				strcpy(query, coap_opt_value(option));
-				printf("coap_opt_value: %s\n", query);
 				return queryValToInt(coap_opt_value(option), 
 					strlen(coap_opt_value(option)));
 	   }
@@ -104,16 +96,15 @@ sensor_handler(coap_context_t *ctx,
     unsigned char buf[3];
     
     val = getADC(0);
-    //val = 1000;
     sprintf(index, "%d", val);
     response->hdr->code = COAP_RESPONSE_CODE(205); // Why 205?
     
     coap_add_option(response,
                   COAP_OPTION_CONTENT_TYPE,
-                  coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
+                  coap_encode_var_bytes(buf, COAP_MEDIATYPE_APPLICATION_JSON), buf);
     coap_add_option(response,
                   COAP_OPTION_MAXAGE,
-                  coap_encode_var_bytes(buf, 60), buf);
+                  coap_encode_var_bytes(buf, 30), buf);
     
     coap_add_data(response, strlen(index), (unsigned char *)index);
 }
@@ -132,44 +123,7 @@ actuator_gpio_handler(coap_context_t *ctx,
     unsigned char buf[3];
     
     val = queryToInt(request);
-    printf("%d\n", val);
     turnGPIO(3, val);
-    
-    //printf("value of query: %d\n", queryValue(request));
-    sprintf(index, "%d", val);
-    response->hdr->code = COAP_RESPONSE_CODE(205); // Why 205?
-    
-    coap_add_option(response,
-                  COAP_OPTION_CONTENT_TYPE,
-                  coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
-    coap_add_option(response,
-                  COAP_OPTION_MAXAGE,
-                  coap_encode_var_bytes(buf, 60), buf);
-    
-    coap_add_data(response, strlen(index), (unsigned char *)index);
-    //printf("token: %s\n", token->s);
-    //printf("pdu request data: %s\n", request->data);
-    //printf("resource uri: %s\n", resource->uri.s);
-    //printf("resource link attr value: %d\n", resource->link);
-    //printf("ambilOprion:\n");
-    //ambilOption(request);
-}
-
-static void
-actuator_pwm_handler(coap_context_t *ctx,
-              struct coap_resource_t *resource,
-              const coap_endpoint_t *local_interface,
-              coap_address_t *peer,
-              coap_pdu_t *request,
-              str *token,
-              coap_pdu_t *response) {
-
-    char index[7];
-    unsigned int val;
-    unsigned char buf[3];
-    
-    val = queryToInt(request);
-    setPWM(9, val);
     
     //printf("value of query: %d\n", queryValue(request));
     //strcpy(index, "sukses");
@@ -192,12 +146,51 @@ actuator_pwm_handler(coap_context_t *ctx,
     //ambilOption(request);
 }
 
+static void
+actuator_pwm_handler(coap_context_t *ctx,
+              struct coap_resource_t *resource,
+              const coap_endpoint_t *local_interface,
+              coap_address_t *peer,
+              coap_pdu_t *request,
+              str *token,
+              coap_pdu_t *response) {
+
+    char index[7];
+    unsigned int val;
+    unsigned char buf[5];
+    
+    val = queryToInt(request);
+    setPWM(9, val);
+    
+    //printf("value of query: %d\n", queryValue(request));
+    sprintf(index, "%d", val);
+    response->hdr->code = COAP_RESPONSE_CODE(205); // Why 205?
+    
+    coap_add_option(response,
+                  COAP_OPTION_CONTENT_TYPE,
+                  coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
+    coap_add_option(response,
+                  COAP_OPTION_MAXAGE,
+                  coap_encode_var_bytes(buf, 30), buf);
+    
+    coap_add_data(response, strlen(index), (unsigned char *)index);
+    //printf("token: %s\n", token->s);
+    //printf("pdu request data: %s\n", request->data);
+    //printf("resource uri: %s\n", resource->uri.s);
+    //printf("resource link attr value: %d\n", resource->link);
+    //printf("ambilOprion:\n");
+    //ambilOption(request);
+}
+
 int main(int argc, char* argv[]){
     coap_context_t  *ctx; // The CoAP stack's global state
     coap_address_t serv_addr; // Multi-purpose address abstraction
-    coap_resource_t *index; // buat diisi sama coap_resource_init
+    coap_resource_t *r; // buat diisi sama coap_resource_init
     fd_set readfds; // TODO: cari ini apa
     
+    printf("tunggu...\n");
+    initSerial("/dev/ttyUSB0", B9600);
+    printf("selesai init uart\n");
     /* Prepare the CoAP server socket */ 
     coap_address_init(&serv_addr);
     serv_addr.addr.sin.sin_family = AF_INET6;
@@ -207,21 +200,30 @@ int main(int argc, char* argv[]){
     if (!ctx)
         exit(EXIT_FAILURE);
     
-    index = coap_resource_init(NULL, 0, 0);
-    coap_register_handler(index, COAP_REQUEST_GET, index_handler);
-    coap_add_resource(ctx, index);
+	r = coap_resource_init(NULL, 0, 0);
+    coap_register_handler(r, COAP_REQUEST_GET, index_handler);
+    coap_add_attr(r, (unsigned char *)"ct", 2, (unsigned char *)"0", 1, 0);
+	coap_add_attr(r, (unsigned char *)"title", 5, (unsigned char *)"\"General Info\"", 14, 0);
+    coap_add_resource(ctx, r);
     
-    index = coap_resource_init((unsigned char *)"sensor", strlen("sensor"), 0);
-    coap_register_handler(index, COAP_REQUEST_GET, sensor_handler);
-    coap_add_resource(ctx, index);
+    r = coap_resource_init((unsigned char *)"sensor", strlen("sensor"), 0);
+    coap_add_attr(r, (unsigned char *)"ct", 2, (unsigned char *)"50", strlen("50"), 0); //50: json
+	coap_add_attr(r, (unsigned char *)"title", 5, (unsigned char *)"\"Sensor ADC\"", strlen("\"Sensor ADC\""), 0);
+	coap_add_attr(r, (unsigned char *)"rt", 2, (unsigned char *)"\"sensor-adc\"", strlen("\"sensor-adc\""), 0); //50: json
+    coap_register_handler(r, COAP_REQUEST_GET, sensor_handler);
+    coap_add_resource(ctx, r);
     
-    index = coap_resource_init((unsigned char *)"gpio", strlen("gpio"), 0);
-    coap_register_handler(index, COAP_REQUEST_GET, actuator_gpio_handler);
-    coap_add_resource(ctx, index);
+    r = coap_resource_init((unsigned char *)"gpio", strlen("gpio"), 0);
+    coap_add_attr(r, (unsigned char *)"ct", 2, (unsigned char *)"0", strlen("0"), 0); 
+	coap_add_attr(r, (unsigned char *)"title", 5, (unsigned char *)"\"Set GPIO\"", strlen("\"Set GPIO\""), 0);
+    coap_register_handler(r, COAP_REQUEST_GET, actuator_gpio_handler);
+    coap_add_resource(ctx, r);
     
-    index = coap_resource_init((unsigned char *)"pwm", strlen("pwm"), 0);
-    coap_register_handler(index, COAP_REQUEST_GET, actuator_pwm_handler);
-    coap_add_resource(ctx, index);
+    r = coap_resource_init((unsigned char *)"pwm", strlen("pwm"), 0);
+    coap_add_attr(r, (unsigned char *)"ct", 2, (unsigned char *)"0", strlen("0"), 0); //50: json
+	coap_add_attr(r, (unsigned char *)"title", 5, (unsigned char *)"\"Sensor PWM\"", strlen("\"Sensor PWM\""), 0);
+    coap_register_handler(r, COAP_REQUEST_GET, actuator_pwm_handler);
+    coap_add_resource(ctx, r);
     
     while (1) {
         FD_ZERO(&readfds);
@@ -241,4 +243,3 @@ int main(int argc, char* argv[]){
 		
     return 0;
 }
-

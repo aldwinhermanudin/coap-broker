@@ -1,0 +1,25 @@
+Settingan Apache2
+
+1. Install apache2 dengan sudo apt-get install apache2
+2. Ingat, program cgi ditaro di /usr/lib/cgi-bin
+3. Di edit /etc/apache2/apache2.conf
+	a. Tambahin:
+		<Directory /usr/lib/cgi-bin>
+			Options ExecCGI
+			allow from all
+		</Directory>
+	b. Ganti isi <Directory /var/www/> :
+		Options Indexes FollowSymLinks
+		AllowOverride all
+		allow from all
+		Require all granted
+
+4. Di root folder (/var/www/html), bikin file .htaccess
+	a. Isi dari file .htaccess :
+		RewriteEngine On
+		RewriteCond %{THE_REQUEST} \s/+hc/(.*) [NC]
+		RewriteRule ^ cgi-bin/index.cgi?coap_target_uri=%1 [L,QSA]
+
+5. Jangan lupa jadiin index.cgi jadi salah satu program default di DirectoryIndex (lupa ada dimana, soalnya di raspi ga ada httpd.conf, tapi apache2.conf dan ga ada disana)
+
+

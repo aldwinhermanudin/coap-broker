@@ -537,11 +537,9 @@ message_handler(struct coap_context_t *ctx,
         /* There is no block option set, just read the data and we are done. */
         if (coap_get_data(received, &len, &databuf)) {
 			//append_to_output(databuf, len); //ini nih yang print payload
-			//printf("tes: %s, len: %d\n", databuf, len);
 			databuf[len] = '\0';
-			
 			tai = ambilMaxAge(received);
-			printf("%s-%d", databuf, tai);
+			printf("data: %s-%d", databuf, tai);
 		}
       }
     }

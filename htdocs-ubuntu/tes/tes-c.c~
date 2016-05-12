@@ -1,0 +1,11 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+	printf("Content-Type: application/json\n");
+	printf("Status: 400 Bad Request\n\n");
+	//printf("Status: 200 OK\n\n");	
+	//printf("{\"a\":1,\"b\":2,\"c\":3,\"d\":4,\"e\":5}");
+	printf("{\"temp\" : 813}");	
+	return 0;
+}

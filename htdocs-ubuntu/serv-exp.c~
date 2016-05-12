@@ -136,7 +136,7 @@ actuator_gpio_handler(coap_context_t *ctx,
     turnGPIO(3, val);
     
     //printf("value of query: %d\n", queryValue(request));
-    sprintf(index, "%d", val);
+    strcpy(index, "sukses");
     response->hdr->code = COAP_RESPONSE_CODE(205); // Why 205?
     
     coap_add_option(response,
@@ -147,11 +147,11 @@ actuator_gpio_handler(coap_context_t *ctx,
                   coap_encode_var_bytes(buf, 60), buf);
     
     coap_add_data(response, strlen(index), (unsigned char *)index);
-    //printf("token: %s\n", token->s);
-    //printf("pdu request data: %s\n", request->data);
-    //printf("resource uri: %s\n", resource->uri.s);
+    printf("token: %s\n", token->s);
+    printf("pdu request data: %s\n", request->data);
+    printf("resource uri: %s\n", resource->uri.s);
     //printf("resource link attr value: %d\n", resource->link);
-    //printf("ambilOprion:\n");
+    printf("ambilOprion:\n");
     //ambilOption(request);
 }
 
@@ -172,8 +172,7 @@ actuator_pwm_handler(coap_context_t *ctx,
     setPWM(9, val);
     
     //printf("value of query: %d\n", queryValue(request));
-    //strcpy(index, "sukses");
-    sprintf(index, "%d", val);
+    strcpy(index, "sukses");
     response->hdr->code = COAP_RESPONSE_CODE(205); // Why 205?
     
     coap_add_option(response,
@@ -181,14 +180,14 @@ actuator_pwm_handler(coap_context_t *ctx,
                   coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
     coap_add_option(response,
                   COAP_OPTION_MAXAGE,
-                  coap_encode_var_bytes(buf, 30), buf);
+                  coap_encode_var_bytes(buf, 60), buf);
     
     coap_add_data(response, strlen(index), (unsigned char *)index);
-    //printf("token: %s\n", token->s);
-    //printf("pdu request data: %s\n", request->data);
-    //printf("resource uri: %s\n", resource->uri.s);
+    printf("token: %s\n", token->s);
+    printf("pdu request data: %s\n", request->data);
+    printf("resource uri: %s\n", resource->uri.s);
     //printf("resource link attr value: %d\n", resource->link);
-    //printf("ambilOprion:\n");
+    printf("ambilOprion:\n");
     //ambilOption(request);
 }
 

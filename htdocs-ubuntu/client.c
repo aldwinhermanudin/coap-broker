@@ -1,3 +1,13 @@
+/* -*- Mode: C; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 * -*- */
+
+/* coap-client -- simple CoAP client
+ *
+ * Copyright (C) 2010--2015 Olaf Bergmann <bergmann@tzi.org>
+ *
+ * This file is part of the CoAP library libcoap. Please see README for terms of
+ * use.
+ */
+
 #include "coap_config.h"
 
 #include <string.h>
@@ -22,8 +32,6 @@ static unsigned char _token_data[8];
 str the_token = { 0, _token_data };
 
 #define FLAGS_BLOCK 0x01
-
-#define NDEBUG 0
 
 static coap_list_t *optlist = NULL;
 /* Request URI.
@@ -141,7 +149,7 @@ coap_new_request(coap_context_t *ctx,
     debug("cannot add token to request\n");
   }
 
-  //coap_show_pdu(pdu); //disini nih v:1 t:CON dsb
+ //coap_show_pdu(pdu); //disini nih v:1 t:CON dsb
 
   if (options) {
     /* sort options for delta encoding */
@@ -303,44 +311,6 @@ check_token(coap_pdu_t *received) {
     memcmp(received->hdr->token, the_token.s, the_token.length) == 0;
 }
 
-int ambilMaxAge(const coap_pdu_t *pdu) {
-	unsigned char buf[COAP_MAX_PDU_SIZE]; /* need some space for output creation */
-    size_t buf_len = 0; /* takes the number of bytes written to buf */
-    int age;
-    coap_opt_iterator_t opt_iter;
-    coap_opt_t *option;
-    
-	coap_option_iterator_init((coap_pdu_t *)pdu, &opt_iter, COAP_OPT_ALL);
-	
-	while ((option = coap_option_next(&opt_iter))) {
-       
-       
-       switch (opt_iter.type) {
-			case COAP_OPTION_MAXAGE: 
-				//printf("coap_opt_value: %s\n", coap_opt_value(option));
-				buf_len = snprintf((char *)buf, sizeof(buf), "%u",
-                coap_decode_var_bytes(COAP_OPT_VALUE(option),
-                              COAP_OPT_LENGTH(option)));
-                 //printf("%s, %zu\n", buf, strlen(buf));
-                 age = atoi(buf);
-                 return age;                 
-				break;
-	   }
-     }
-     
-}
-
-void getTheRealPayload(char *result, char *raw, size_t length) {
-	int i = 0;
-	printf("shit men: %zu\n", length);
-	for (i = 0; i < length; i++) {
-		result[i] = raw[i];
-		printf("%c\n", result[i]);
-	}
-	result[i] = '\0';
-	printf("string: %s\nstrlen: %d\n", result, (int)strlen(result));
-}
-
 static void
 message_handler(struct coap_context_t *ctx,
                 const coap_endpoint_t *local_interface,
@@ -357,21 +327,14 @@ message_handler(struct coap_context_t *ctx,
   size_t len;
   unsigned char *databuf;
   coap_tid_t tid;
-  
-  //tambahan
-  char res[10];
-  int tai;
+	char res[100];
+//note 3: tes show pdu
 
 #ifndef NDEBUG
-  coap_get_data(received, &len, &databuf);
-  databuf[len] = '\0';
-  strncpy(res, databuf, len);
-  printf("the real payload: %s\n", res);
   if (LOG_DEBUG <= coap_get_log_level()) {
-    printf("masuk shit\n");
     debug("** process incoming %d.%02d response:\n",
           (received->hdr->code >> 5), received->hdr->code & 0x1F);
-    coap_show_pdu(received); //hmm hmm
+    coap_show_pdu(received);
   }
 #endif
 
@@ -405,8 +368,9 @@ message_handler(struct coap_context_t *ctx,
       unsigned short blktype = opt_iter.type;
 
       /* TODO: check if we are looking at the correct block number */
-      if (coap_get_data(received, &len, &databuf))
-        append_to_output(databuf, len);
+      if (coap_get_data(received, &len, &databuf)) {
+		append_to_output(databuf, len);
+	  }
 
       if(COAP_OPT_BLOCK_MORE(block_opt)) {
         /* more bit is set */
@@ -516,7 +480,10 @@ message_handler(struct coap_context_t *ctx,
                          payload.s,
                          block.num,
                          block.szx);
-          //coap_show_pdu(pdu);
+          
+          //note 1
+          coap_show_pdu(pdu);
+          
           if (pdu->hdr->type == COAP_MESSAGE_CON)
             tid = coap_send_confirmed(ctx, local_interface, remote, pdu);
           else
@@ -536,12 +503,8 @@ message_handler(struct coap_context_t *ctx,
       } else {
         /* There is no block option set, just read the data and we are done. */
         if (coap_get_data(received, &len, &databuf)) {
-			//append_to_output(databuf, len); //ini nih yang print payload
-			//printf("tes: %s, len: %d\n", databuf, len);
-			databuf[len] = '\0';
-			
-			tai = ambilMaxAge(received);
-			printf("%s-%d", databuf, tai);
+			append_to_output(databuf, len); //note 2: databuf = payload
+			//printf("\ntes...\n%s\n...\n", databuf);
 		}
       }
     }
@@ -554,9 +517,10 @@ message_handler(struct coap_context_t *ctx,
       if (coap_get_data(received, &len, &databuf)) {
         fprintf(stderr, " ");
         while(len--)
-        fprintf(stderr, "%c", *databuf++);
+			fprintf(stderr, "%c", *databuf++);
       }
       fprintf(stderr, "\n");
+      
     }
 
   }
@@ -566,7 +530,7 @@ message_handler(struct coap_context_t *ctx,
     debug("message_handler: error sending response");
   }
   coap_delete_pdu(pdu);
-	
+
   /* our job is done, we can exit at any time */
   ready = coap_check_option(received, COAP_OPTION_SUBSCRIPTION, &opt_iter) == NULL;
 }
@@ -731,9 +695,9 @@ cmdline_uri(char *arg) {
                 (unsigned char *)arg));
 
   } else {      /* split arg into Uri-* options */
-	  coap_split_uri((unsigned char *)arg, strlen(arg), &uri );
-	
-	if (uri.port != COAP_DEFAULT_PORT) {
+      coap_split_uri((unsigned char *)arg, strlen(arg), &uri );
+
+    if (uri.port != COAP_DEFAULT_PORT) {
       coap_insert(&optlist,
                   new_option_node(COAP_OPTION_URI_PORT,
                   coap_encode_var_bytes(portbuf, uri.port),
@@ -749,7 +713,8 @@ cmdline_uri(char *arg) {
                     new_option_node(COAP_OPTION_URI_PATH,
                     COAP_OPT_LENGTH(buf),
                     COAP_OPT_VALUE(buf)));
-		buf += COAP_OPT_SIZE(buf);
+
+        buf += COAP_OPT_SIZE(buf);
       }
     }
 
@@ -1173,7 +1138,6 @@ main(int argc, char **argv) {
     port = uri.port;
   }
 
-	
   /* resolve destination address where server should be sent */
   res = resolve_address(&server, &dst.addr.sa);
 
@@ -1230,13 +1194,13 @@ main(int argc, char **argv) {
   if (flags & FLAGS_BLOCK)
     set_blocksize();
 
-  if (! (pdu = coap_new_request(ctx, method, &optlist, payload.s, payload.length))) //ini yang v :1 t:CON ...
+  if (! (pdu = coap_new_request(ctx, method, &optlist, payload.s, payload.length)))
     return -1;
 
 #ifndef NDEBUG
   if (LOG_DEBUG <= coap_get_log_level()) {
     debug("sending CoAP request:\n");
-    //coap_show_pdu(pdu);
+    coap_show_pdu(pdu);
   }
 #endif
 
@@ -1252,7 +1216,6 @@ main(int argc, char **argv) {
   debug("timeout is set to %d seconds\n", wait_seconds);
 
   while ( !(ready && coap_can_exit(ctx)) ) {
-
     FD_ZERO(&readfds);
     FD_SET( ctx->sockfd, &readfds );
 
@@ -1291,8 +1254,6 @@ main(int argc, char **argv) {
     } else { /* timeout */
       coap_ticks(&now);
       if (max_wait <= now) {
-		  //tambahan
-		  printf("504 gateway timeout\n");
         info("timeout\n");
         break;
       }
@@ -1306,10 +1267,9 @@ main(int argc, char **argv) {
       }
     }
   }
-	
-	
+
   close_output();
-	
+
   coap_delete_list(optlist);
   coap_free_context( ctx );
 

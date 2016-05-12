@@ -1,0 +1,4 @@
+RewriteEngine On    # Turn on the rewriting engine
+#RewriteRule    ^hc/.*/?$    index.cgi?coap_target_uri=$1    [NC,L]    # Handle product requests
+RewriteCond %{THE_REQUEST}  \s/+hc/(.*) [NC]
+RewriteRule ^ index.cgi?coap_target_uri=%1 [L,QSA]
