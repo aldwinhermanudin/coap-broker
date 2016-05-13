@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define SOCK_PATH "echo_socket"
 #define RESPONSE_SIZE 9
@@ -69,6 +70,136 @@ void decode(char *hasil, char *asli) {
 			hasil[indexHasil++] = asli[i];
 		}
 	}
+}
+
+void json_encode_observe(char *string) {
+	int len = strlen(string);
+	char hasil[1000] = "[";
+	char temp[255];
+	int h = 0, i = 0, j = 0, k = 0;
+	bool obs = false;
+	
+	k = 0;
+	for (i = 0; i < len; i++) {
+		if (string[i] == '<') {
+			strcat(hasil, "{\"href\":\"");
+			i++;
+			k = 0;
+			while (string[i] != '>') {
+				temp[k++] = string[i++];
+			}
+			temp[k] = '\0';
+			strcat(hasil, temp);
+			strcat(hasil, "\",");
+			temp[0] = '\0';
+			
+		}
+		
+		if (string[i] == ';') {
+			i++;
+			k = 0;
+			while (1) {
+				if (string[i] == '=') {
+					temp[k] = '\0';
+					strcat(hasil, "\"");
+					strcat(hasil, temp);
+					strcat(hasil, "\":");
+					if (string[i+1] != '"') { //cek ada petik duanya ga
+						strcat(hasil, "\"");
+					}
+					
+					temp[0] = '\0';
+					k = 0;
+					i++;
+					obs = false;
+					break;
+				}
+				if (string[i] == ';') {
+					temp[k] = '\0';
+					strcat(hasil, "\"");
+					strcat(hasil, temp);
+					strcat(hasil, "\"");
+					if (temp[0] != '!') {			
+						strcat(hasil, ":true");
+					}
+					else 
+						strcat(hasil, ":false");
+					
+					temp[0] = '\0';
+					k = 0;
+					//i++;
+					break;
+				}
+				if (string[i] == ',') {
+					temp[k] = '\0';
+					strcat(hasil, "\"");
+					strcat(hasil, temp);
+					strcat(hasil, "\"");
+					if (temp[0] != '!') {			
+						strcat(hasil, ":true");
+					}
+					else 
+						strcat(hasil, ":false");
+					
+					strcat(hasil, "},");
+					temp[0] = '\0';
+					k = 0;
+					//i++;
+					obs = true;
+					break;
+				}
+				temp[k++] = string[i++];
+			}
+			
+			if (obs)
+				continue;
+			
+			while (1) {
+				if (string[i] == ';') {
+					temp[k] = '\0';
+					strcat(hasil, temp);
+					if (string[i-1] != '"') { //cek ada petik duanya ga
+						strcat(hasil, "\"");
+					}
+					strcat(hasil, ",");
+					temp[0] = '\0';
+					
+					i--;
+					break;
+				}
+				
+				if (string[i] == ',') {
+					temp[k] = '\0';
+					strcat(hasil, temp);
+					if (string[i-1] != '"') { //cek ada petik duanya ga
+						strcat(hasil, "\"");
+					}
+					temp[0] = '\0';
+					strcat(hasil, "},");
+					
+					i--;
+					break;
+				}
+				
+				if (string[i] == '\n') {
+					temp[k] = '\0';
+					strcat(hasil, temp);
+					if (string[i-1] != '"') { //cek ada petik duanya ga
+						strcat(hasil, "\"");
+					}
+					temp[0] = '\0';
+					//strcat(hasil, "}]");
+					break;
+				}
+				
+				temp[k++] = string[i++];
+			}
+			
+		}
+	}
+	
+	strcat(hasil, "}]");
+	printf("%s", hasil);
 }
 
 void tambahInterface(char *hasil, char *asli) {
@@ -155,7 +286,7 @@ int main(int argc, char *argv[])
 			if (httpResponse[0] == '\0') {
 				printf("Status: 200 OK\n\n");
 				if (strstr(complete, "well-known") != NULL) {
-					printf("%s", str);
+					json_encode_observe(str);
 				}
 				else
 					json_encode_sensor(atoi(str));
