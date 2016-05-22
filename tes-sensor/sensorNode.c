@@ -48,7 +48,8 @@ unsigned short getADC(unsigned char pin) {
 	sprintf(temp, "%d", n);
 	strcat(buffer, temp);
 	strcat(buffer, "\n");
-	write(fd, buffer, strlen(buffer));
+	//write(fd, buffer, strlen(buffer));
+	write(fd, "01\n", strlen("01\n"));
 	n = read(fd, hasil, 64);
 	hasil[n] = 0;
 	x = atoi(hasil);
