@@ -251,7 +251,7 @@ int main(int argc, char *argv[])
     
     decode(res, query);
     strcpy(complete, res);
-    tambahInterface(complete, res);
+    //tambahInterface(complete, res);
     
     if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
         perror("socket");
