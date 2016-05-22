@@ -32,6 +32,8 @@ for (i = 0; i < 8; i++) {
 
   printf("%i bytes read, buffer contains: %s\n", n, buf);
   memset(buf,0,sizeof(buf));
+  fd = open("/dev/ttyUSB0", O_RDWR | O_NOCTTY);
+  printf("fd opened as %i\n", fd);
   sleep(2);
 }
  
