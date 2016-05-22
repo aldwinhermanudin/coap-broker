@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "sensorNode.h"
+#define DEBUG 0
 
-
+/*
 int main(int argc, char *argv[])
 {
   int fd, n, i;
@@ -37,7 +38,7 @@ for (i = 0; i < 8; i++) {
   sleep(2);
 }
  
-  /*if(DEBUG)
+  if(DEBUG)
     {
       printf("Printing individual characters in buf as integers...\n\n");
       for(i=0; i<n; i++)
@@ -46,22 +47,20 @@ for (i = 0; i < 8; i++) {
 	}
       printf("\n");
     }
-    **/
+    
 
   return 0;
 }
-
-
-/*
+*/
 
 int main() {
 	int i, x;
 	initSerial("/dev/ttyUSB0", B9600);
 	printf("1. tes ADC...\n");
-	for (i = 0; i < 6; i++) {
+	//for (i = 0; i < 6; i++) {
 		x = getADC(0);
 		printf("%d - ADC: %d\n", i, x);
-	}
+	//}
 	printf("tes GPIO...\n");
 	printf("matiin...\n");
 	turnGPIO(3, 0);
@@ -72,4 +71,4 @@ int main() {
 	return 0;
 }
 
-*/
+
