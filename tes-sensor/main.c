@@ -5,7 +5,7 @@
 
 int main() {
 	int i, x;
-	
+	initSerial("/dev/ttyUSB0", B9600);
 	printf("1. tes ADC...\n");
 	for (i = 0; i < 6; i++) {
 		x = getADC(0);
