@@ -27,12 +27,12 @@ int main(int argc, char *argv[])
 
 for (i = 0; i < 8; i++) {
   write(fd, "01\n", 3);
+  usleep(10000);
   n = read(fd, buf, 64);
   buf[n] = 0;
 
   printf("%i bytes read, buffer contains: %s\n", n, buf);
   memset(buf,0,sizeof(buf));
-  fd = open("/dev/ttyUSB0", O_RDWR | O_NOCTTY);
   printf("fd opened as %i\n", fd);
   sleep(2);
 }
