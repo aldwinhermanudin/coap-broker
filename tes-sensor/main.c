@@ -32,6 +32,7 @@ for (i = 0; i < 8; i++) {
 
   printf("%i bytes read, buffer contains: %s\n", n, buf);
   memset(buf,0,sizeof(buf));
+  sleep(2);
 }
  
   /*if(DEBUG)
