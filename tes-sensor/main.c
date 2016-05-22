@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include "sensorNode.h"
 
-/*
+
 int main(int argc, char *argv[])
 {
   int fd, n, i;
@@ -25,13 +25,13 @@ int main(int argc, char *argv[])
   toptions.c_lflag |= ICANON;
   tcsetattr(fd, TCSANOW, &toptions);
 
-  write(fd, "0", 1);
+  write(fd, "01\n", 1);
   n = read(fd, buf, 64);
   buf[n] = 0;
 
   printf("%i bytes read, buffer contains: %s\n", n, buf);
  
-  if(DEBUG)
+  /*if(DEBUG)
     {
       printf("Printing individual characters in buf as integers...\n\n");
       for(i=0; i<n; i++)
@@ -40,12 +40,13 @@ int main(int argc, char *argv[])
 	}
       printf("\n");
     }
+    **/
 
   return 0;
 }
-*/
 
 
+/*
 
 int main() {
 	int i, x;
@@ -65,3 +66,4 @@ int main() {
 	return 0;
 }
 
+*/
