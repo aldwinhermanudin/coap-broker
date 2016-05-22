@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
   toptions.c_lflag |= ICANON;
   tcsetattr(fd, TCSANOW, &toptions);
 
-  write(fd, "01\n", 1);
+  write(fd, "01\n", 3);
   n = read(fd, buf, 64);
   buf[n] = 0;
 
