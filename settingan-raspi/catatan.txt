@@ -22,4 +22,7 @@ Settingan Apache2
 
 5. Jangan lupa jadiin index.cgi jadi salah satu program default di DirectoryIndex (lupa ada dimana, soalnya di raspi ga ada httpd.conf, tapi apache2.conf dan ga ada disana)
 
+6. Kalo program coap ga bisa jalan masukkin:
+export LD_LIBRARY_PATH=/usr/local/lib
+
 
