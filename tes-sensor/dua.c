@@ -2,6 +2,7 @@
 #include <unistd.h>			//Used for UART
 #include <fcntl.h>			//Used for UART
 #include <termios.h>		//Used for UART
+#include <errno.h>
 
 int main() {
 	//-------------------------
@@ -80,6 +81,7 @@ int main() {
 		{
 			//An error occured (will occur if there are no bytes)
 			printf("3.5 error\n");
+			printf("errno: %d, string: %s\n", errno, strerror(errno));
 		}
 		else if (rx_length == 0)
 		{
