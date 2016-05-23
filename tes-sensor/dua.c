@@ -3,6 +3,7 @@
 #include <fcntl.h>			//Used for UART
 #include <termios.h>		//Used for UART
 #include <errno.h>
+#include <string.h>
 
 int main() {
 	//-------------------------
