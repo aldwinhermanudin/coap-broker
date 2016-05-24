@@ -2,6 +2,8 @@ index:
 	gcc -o index.cgi client-asli.c
 server-ipc:
 	gcc -o server cache.c soc_server.c -lpthread
+server-detach:
+	gcc -o server-buang cache.c soc_server_detach.c -lpthread
 server-abal:
 	gcc coap_list.c serv-exp.c sensorNode.c -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX -lcoap-1 -g -o server-tes
 client-abal:
