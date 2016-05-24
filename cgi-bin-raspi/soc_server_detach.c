@@ -56,6 +56,7 @@ int main(void)
     struct sockaddr_un local, remote;
     char str[100];
     pthread_t threadRequest[NUMB_OF_SOCKETS];
+    pthread_t tid;
     pthread_attr_t tattr;
     int retAttr;
 
@@ -94,7 +95,11 @@ int main(void)
 		retAttr = pthread_attr_init(&tattr);
 		retAttr = pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED);
 		//ret = pthread_create(&tid, &tattr, start_routine, (void *)shit);
-        if ( pthread_create(&threadRequest[i++], &tattr, handle_request, (void *)s2) ) {
+        //if ( pthread_create(&threadRequest[i++], &tattr, handle_request, (void *)s2) ) {
+            //printf("error creating thread.");
+            //abort();
+        //}
+        if ( pthread_create(&tid, &tattr, handle_request, (void *)s2) ) {
             printf("error creating thread.");
             abort();
         }
