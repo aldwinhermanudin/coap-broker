@@ -82,27 +82,23 @@ int main(void)
     }
 
     while (1) {
-        int done, n;
-        printf("Waiting for a connection...\n");
-        t = sizeof(remote);
-        if ((s2 = accept(s, (struct sockaddr *)&remote, &t)) == -1) {
-            perror("accept");
-            exit(1);
-        }
-
-        printf("s2 (accept) = %d, i (num of thread): %d\n", s2, i);
 		
-		retAttr = pthread_attr_init(&tattr);
-		retAttr = pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED);
-		//ret = pthread_create(&tid, &tattr, start_routine, (void *)shit);
-        //if ( pthread_create(&threadRequest[i++], &tattr, handle_request, (void *)s2) ) {
-            //printf("error creating thread.");
-            //abort();
-        //}
-        if ( pthread_create(&tid, &tattr, handle_request, (void *)s2) ) {
-            printf("error creating thread.");
-            abort();
-        }
+		for (i = 0; i < NUMB_OF_SOCKETS; i++) {
+			t = sizeof(remote);
+			if ((s2 = accept(s, (struct sockaddr *)&remote, &t)) == -1) {
+				perror("accept");
+				exit(1);
+			}
+
+			printf("s2 (accept) = %d, i (num of thread): %d\n", s2, i);
+			
+			retAttr = pthread_attr_init(&tattr);
+			retAttr = pthread_attr_setdetachstate(&tattr, PTHREAD_CREATE_DETACHED);
+			if ( pthread_create(&tid, &tattr, handle_request, (void *)s2) ) {
+				printf("error creating thread.");
+				abort();
+			}
+		}
     }
 
     return 0;
