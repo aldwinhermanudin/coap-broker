@@ -93,3 +93,17 @@ void setPWM(unsigned short pin, unsigned short value) {
 	strcat(command, "\n");
 	write(fd, command, strlen(command));
 }
+
+unsigned short getFlowmeter() { //in mL/sec
+	unsigned short x = 0;
+	char buffer[3] = "3";
+	char hasil[64];
+	int n;
+	
+	strcat(buffer, "\n");
+	write(fd, buffer, strlen(buffer));
+	n = read(fd, hasil, 64);
+	hasil[n] = 0;
+	x = atoi(hasil);
+	return x;
+}

@@ -12,3 +12,5 @@ client-coap:
 	gcc coap_list.c client.c -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX -lcoap-1 -g -o coap-client
 server-coap:
 	gcc coap_list.c coap-server.c -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX -lcoap-1 -g -o coap-server
+coap-serv:
+	gcc coap_list.c CoAP_server.c sensorNode.c -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX -lcoap-1 -g -o coap-server
