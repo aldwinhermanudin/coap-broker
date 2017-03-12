@@ -679,7 +679,13 @@ static void hnd_delete_topic(coap_context_t *ctx ,
                 str *token ,
                 coap_pdu_t *response ){
 					
-response->hdr->code = COAP_RESPONSE_CODE(205);
+	int status = deleteTopic(&topicDB, resource->uri.s);
+	/* FIXME: link attributes for resource have been created dynamically
+	* using coap_malloc() and must be released. */
+	if (status){
+		coap_delete_resource(ctx, resource->key);
+		response->hdr->code = COAP_RESPONSE_CODE(202);
+	}
 }
                 
 static void hnd_post_topic(coap_context_t *ctx ,
@@ -689,7 +695,29 @@ static void hnd_post_topic(coap_context_t *ctx ,
                 coap_pdu_t *request ,
                 str *token ,
                 coap_pdu_t *response ){
-					
-response->hdr->code = COAP_RESPONSE_CODE(205);
+					coap_resource_t *new_resource;
+	size_t size;
+    unsigned char *data;
+    unsigned char *data_safe;
+
+	(void)coap_get_data(request, &size, &data);
+	data_safe = coap_malloc(sizeof(char)*(size+1));
+	sprintf(data_safe, "%s", data);
+	//int status = 0;
+	int status = parseLinkFormat(data_safe,resource, &new_resource);
+	
+	
+	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
+	if (status){
+		coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
+		coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
+		coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
+		coap_register_handler(new_resource, COAP_REQUEST_DELETE, hnd_delete_topic);
+		new_resource->observable = 1;
+		coap_add_resource(ctx, new_resource);
+		coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
+		addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, time(NULL));
+	}
+	coap_free(data_safe);
 }
 
