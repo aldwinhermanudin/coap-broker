@@ -100,13 +100,17 @@ int main()
     printDB(startPtr);
     deleteTopic(&startPtr, "test");
     printDB(startPtr);
+    addTopicWEC(&startPtr, NULL, strlen("test"), time(NULL));
     addTopicWEC(&startPtr, "test", strlen("test"), time(NULL));
     addTopicWEC(&startPtr, "test123", strlen("test123"), time(NULL));
     updateTopicData(&startPtr, "test/tes2", time(NULL)+30, "aldwin", strlen("aldwin"));
+    updateTopicData(&startPtr, "test/tes2", time(NULL)+30, "aldwin", 0);
+    updateTopicData(&startPtr, "test/tes2", time(NULL)+30, NULL, strlen("aldwin"));
     updateTopicData(&startPtr, "test", time(NULL)+30, "aldwin", strlen("aldwin"));
     printDB(startPtr); 
     addTopicWEC(&startPtr, "test123", strlen("test123"), 0);
     printDB(startPtr); 
+    
     
     deleteTopic(&startPtr, "test");
     deleteTopic(&startPtr, "test123");
@@ -161,7 +165,7 @@ int setTopic( TopicDataPtr *sPtr,
 	TopicDataPtr topic = getTopic(sPtr, path);
 	if (topic != NULL){
 		if( data_size > 0 && data != NULL){
-			char* temp_data = malloc(sizeof(char) * (data_size + 1));
+			char* temp_data = malloc(sizeof(char) * (data_size + 2));
 			snprintf(temp_data,sizeof(char) * (data_size + 1), "%s", data);
 			if (topic->data != NULL){
 				free( topic->data );
@@ -204,7 +208,7 @@ int	addTopic(TopicDataPtr *sPtr,
 		
 		/* add data to new struct here */
 		if (path_size > 0 && path != NULL){
-			char* temp_path = malloc(sizeof(char) * (path_size + 1));		
+			char* temp_path = malloc(sizeof(char) * (path_size + 2));		
 			snprintf(temp_path,sizeof(char) * (path_size+1), "%s", path);
 			
 			newPtr->path = temp_path; /* place value in node */
