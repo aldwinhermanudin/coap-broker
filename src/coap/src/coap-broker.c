@@ -1,5 +1,20 @@
-#include <coap.h>
+#include <coap.h> 
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <stdio.h>
+#include <ctype.h>
+#include <sys/select.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <errno.h>
+#include <signal.h>
+   
 #define TESTMODE
 #define TEMPMODE
 
@@ -9,9 +24,7 @@
 #define UNUSED_PARAM
 #endif /* GCC */
 
-#ifdef TESTMODE
-#include <stdlib.h>
-#include <string.h>
+#ifdef TESTMODE 
 #include <time.h>
 /* self-referential structure */
 struct topicData {            
@@ -413,7 +426,7 @@ int pathRegister(coap_resource_t *new_resource, coap_resource_t **resource , cha
 		if(status){
 			char* abs_path = malloc(sizeof(char) * (total_size + 1));
 			sprintf(abs_path,"%s/%s", new_resource->uri.s, rel_path);
-			*resource = coap_resource_init(abs_path, strlen(abs_path), 0); 
+			*resource = coap_resource_init(abs_path, strlen(abs_path), COAP_RESOURCE_FLAGS_RELEASE_URI); 
 		}
 		free(rel_path);
 		return status;
@@ -483,6 +496,11 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 #endif
 
 #ifdef TEMPMODE
+	static int quit = 0;
+	static void	handle_sigint(int signum) {
+	  quit = 1;
+	}
+
 	TopicDataPtr topicDB = NULL; /* initially there are no nodes */
 #endif
  
@@ -559,9 +577,9 @@ int main(int argc, char* argv[])
 	/* Initialize the observable resource */	
 	
 	
-	
+	signal(SIGINT, handle_sigint);
 	/*Listen for incoming connections*/	
-	while (1) {
+	while (!quit ) {
         FD_ZERO(&readfds);
         FD_SET( ctx->sockfd, &readfds );
         /* Block until there is something to read from the socket */
@@ -591,18 +609,18 @@ hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 	size_t response_size = sizeof(response_data);
 	size_t response_offset = 0;
 	RESOURCES_ITER(ctx->resources, r) {
-	response_size = sizeof(response_data);
-	response_offset = 0;
-	coap_print_link(r, response_data, &response_size, &response_offset);
-  }
+		response_size = sizeof(response_data);
+		response_offset = 0;
+		coap_print_link(r, response_data, &response_size, &response_offset);
+	}
   
 
-		response->hdr->code 		  = COAP_RESPONSE_CODE(205); 
-		// option order matters!
-		coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
-		coap_add_option(response, COAP_OPTION_MAXAGE,coap_encode_var_bytes(buf, 20), buf); // mac-age in seconds, so 30 seconds (to mars. #pun)
-		coap_add_data  (response, response_size, response_data);
-		//coap_add_data  (response, resource->uri.length, resource->uri.s);		
+	response->hdr->code 		  = COAP_RESPONSE_CODE(205); 
+	// option order matters!
+	coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
+	coap_add_option(response, COAP_OPTION_MAXAGE,coap_encode_var_bytes(buf, 20), buf); // max-age in seconds, so 30 seconds (to mars. #pun)
+	coap_add_data  (response, response_size, response_data);
+	//coap_add_data  (response, resource->uri.length, resource->uri.s);		
 }
 
 static void
@@ -648,6 +666,10 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 		}
 		else {
 			response->hdr->code 	= COAP_RESPONSE_CODE(205);
+			if (coap_find_observer(resource, peer, token)) {
+			/* FIXME: need to check for resource->dirty? */
+				coap_add_option(response, COAP_OPTION_OBSERVE, coap_encode_var_bytes(buf, ctx->observe), buf);
+			} 
 			coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
 			coap_add_option(response, COAP_OPTION_MAXAGE,coap_encode_var_bytes(buf, 20), buf); // mac-age in seconds, so 30 seconds (to mars. #pun)
 			coap_add_data  (response, strlen(temp->data), temp->data);
@@ -668,9 +690,45 @@ static void hnd_put_topic(coap_context_t *ctx ,
     unsigned char *data; 
 	(void)coap_get_data(request, &size, &data);
 	int status = updateTopicData(&topicDB, resource->uri.s, 0, data, size);
+	if (status){
+		resource->dirty = 1;
+	}
 	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
 }
-            
+ 
+void coapDeleteAttr(coap_attr_t *attr) {
+     if (!attr)
+       return; 
+     coap_free(attr->name.s); 
+     coap_free(attr->value.s);
+    
+     coap_free_type(COAP_RESOURCEATTR, attr); 
+   }           
+void coapFreeResource(coap_resource_t *resource){
+	 coap_attr_t *attr, *tmp;
+     coap_subscription_t *obs, *otmp;
+   
+     assert(resource);
+   
+     /* delete registered attributes */
+     LL_FOREACH_SAFE(resource->link_attr, attr, tmp) coapDeleteAttr(attr);
+   
+     if (resource->flags & COAP_RESOURCE_FLAGS_RELEASE_URI)
+       coap_free(resource->uri.s);
+   
+     /* free all elements from resource->subscribers */
+     // modifying this to re-create free resource. CHANGED : COAP_FREE_TYPE(subscription, obs) to coap_free(obs) 
+     // check original coap_free_resource()
+     LL_FOREACH_SAFE(resource->subscribers, obs, otmp) coap_free(obs);
+   
+   #ifdef WITH_LWIP
+     memp_free(MEMP_COAP_RESOURCE, resource);
+   #endif
+   #ifndef WITH_LWIP
+     coap_free_type(COAP_RESOURCE, resource);
+   #endif 
+}
+
 static void hnd_delete_topic(coap_context_t *ctx ,
                 struct coap_resource_t *resource ,
                 const coap_endpoint_t *local_interface ,
@@ -683,8 +741,12 @@ static void hnd_delete_topic(coap_context_t *ctx ,
 	/* FIXME: link attributes for resource have been created dynamically
 	* using coap_malloc() and must be released. */
 	if (status){
-		coap_delete_resource(ctx, resource->key);
+		RESOURCES_DELETE(ctx->resources, resource);
+		coapFreeResource(resource);
 		response->hdr->code = COAP_RESPONSE_CODE(202);
+	}
+	else{
+		response->hdr->code = COAP_RESPONSE_CODE(404);
 	}
 }
                 
