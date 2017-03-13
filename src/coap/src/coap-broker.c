@@ -14,9 +14,14 @@
 #include <dirent.h>
 #include <errno.h>
 #include <signal.h>
+#include <pthread.h>    
+#include <time.h>     
+#include <semaphore.h> 
+#include "MQTTClient.h"
    
 #define TESTMODE
 #define TEMPMODE
+#define MQTTTEST
 
 #ifdef __GNUC__
 #define UNUSED_PARAM __attribute__ ((unused))
@@ -24,8 +29,7 @@
 #define UNUSED_PARAM
 #endif /* GCC */
 
-#ifdef TESTMODE 
-#include <time.h>
+#ifdef TESTMODE  
 /* self-referential structure */
 struct topicData {            
 	char* path;
@@ -500,8 +504,60 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 	static void	handle_sigint(int signum) {
 	  quit = 1;
 	}
+	coap_context_t**  	global_ctx;
+	MQTTClient* 		global_client;
+	TopicDataPtr 		topicDB = NULL; /* initially there are no nodes */
 
-	TopicDataPtr topicDB = NULL; /* initially there are no nodes */
+#endif
+
+#ifdef MQTTTEST
+	#define ADDRESS     "tcp://localhost:1883"
+	#define CLIENTID    "CoAPBroker" 
+	#define QOS         1
+	#define TIMEOUT     10000L
+
+	volatile MQTTClient_deliveryToken deliveredtoken;
+		
+	void delivered(void *context, MQTTClient_deliveryToken dt)
+	{
+		printf("Message with token value %d delivery confirmed\n", dt);
+		deliveredtoken = dt;
+	}
+
+	int msgarrvd(void *context, char *topicName, int topicLen, MQTTClient_message *message)
+	{
+		int i;
+		char* payloadptr;
+		
+		
+		RESOURCES_ITER((*global_ctx)->resources, r) {
+			if(compareString(r->uri.s, topicName)){
+				TopicDataPtr 	temp_data = getTopic(&topicDB,r->uri.s);
+				char*			temp_payload = malloc(sizeof(char)*(message->payloadlen + 2));
+				snprintf(temp_payload, (message->payloadlen)+1, "%s", (char*)message->payload);
+				printf("Data from DB : %s\n", temp_data->data);
+				printf("Data from MQTT : %s\n", temp_payload);
+				if(!compareString(temp_data->data,temp_payload)){
+					updateTopicData(&topicDB,topicName,0,message->payload,message->payloadlen);
+					r->dirty = 1;
+					coap_check_notify((*global_ctx));
+				}
+				free(temp_payload);
+				break;
+			}
+		}
+		
+		MQTTClient_freeMessage(&message);
+		MQTTClient_free(topicName);
+		return 1;
+	}
+
+	void connlost(void *context, char *cause)
+	{
+		printf("\nConnection lost\n");
+		printf("     cause: %s\n", cause);
+	}
+
 #endif
  
 static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource, 
@@ -551,7 +607,27 @@ int main(int argc, char* argv[])
 	coap_address_t   serv_addr;
 	coap_resource_t* broker_resource;
 	fd_set           readfds;    
+	global_ctx	= &ctx;
 	char broker_path[8] = "ps";
+	
+	/* MQTT Client Init */
+	MQTTClient client;
+    global_client = &client;
+    MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
+    int rc;
+
+    MQTTClient_create(&client, ADDRESS, CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL);
+    conn_opts.keepAliveInterval = 20;
+    conn_opts.cleansession = 1;
+
+    MQTTClient_setCallbacks(client, NULL, connlost, msgarrvd, delivered);
+
+    if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS)
+    {
+        printf("Failed to connect, return code %d\n", rc);
+        exit(-1);       
+    }
+	/* MQTT Client Init */
 	
 	/* turn on debug an printf() */
 	coap_log_t log_level = LOG_DEBUG;
@@ -593,9 +669,12 @@ int main(int argc, char* argv[])
         } 
         
         // coap_check_notify is needed if there is a observable resource
-        coap_check_notify(ctx);
+        // either put here or in put handler
+        //coap_check_notify(ctx);
     }
     
+    MQTTClient_disconnect(client, 10000);
+    MQTTClient_destroy(&client);
     coap_free_context(ctx);  
 }
 
@@ -642,6 +721,7 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 	
 	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
 	if (status){
+		MQTTClient_subscribe(*global_client, new_resource->uri.s, QOS);
 		coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
 		coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
 		coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
@@ -691,7 +771,19 @@ static void hnd_put_topic(coap_context_t *ctx ,
 	(void)coap_get_data(request, &size, &data);
 	int status = updateTopicData(&topicDB, resource->uri.s, 0, data, size);
 	if (status){
+		MQTTClient_message pubmsg = MQTTClient_message_initializer;
+		MQTTClient_deliveryToken token;
+		pubmsg.payload = data;
+		pubmsg.payloadlen = size;
+		pubmsg.qos = QOS;
+		pubmsg.retained = 0;
+		deliveredtoken = 0;
+		MQTTClient_publishMessage(*global_client, resource->uri.s, &pubmsg, &token);
+		printf("Waiting for publication of %s\n"
+            "on topic %s for client with ClientID: %s\n",
+        data, resource->uri.s, CLIENTID);
 		resource->dirty = 1;
+		coap_check_notify(ctx);
 	}
 	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
 }
@@ -741,6 +833,7 @@ static void hnd_delete_topic(coap_context_t *ctx ,
 	/* FIXME: link attributes for resource have been created dynamically
 	* using coap_malloc() and must be released. */
 	if (status){
+		MQTTClient_unsubscribe(*global_client, resource->uri.s);
 		RESOURCES_DELETE(ctx->resources, resource);
 		coapFreeResource(resource);
 		response->hdr->code = COAP_RESPONSE_CODE(202);
@@ -771,6 +864,7 @@ static void hnd_post_topic(coap_context_t *ctx ,
 	
 	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
 	if (status){
+		MQTTClient_subscribe(*global_client, new_resource->uri.s, QOS);
 		coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
 		coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
 		coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
