@@ -18,9 +18,11 @@
 #include <time.h>     
 #include <semaphore.h> 
 #include "MQTTClient.h"
+#include <ctype.h>
    
-#define TESTMODE
-#define TEMPMODE
+#define LL_DATABASE
+#define LF_PARSER
+#define TESTING
 #define MQTTTEST
 
 #ifdef __GNUC__
@@ -29,7 +31,7 @@
 #define UNUSED_PARAM
 #endif /* GCC */
 
-#ifdef TESTMODE  
+#ifdef LL_DATABASE  
 /* self-referential structure */
 struct topicData {            
 	char* path;
@@ -330,8 +332,11 @@ void printDB( TopicDataPtr currentPtr )
     } /* end else */
 
 } /* end function printList */
+#endif
 
-
+#ifdef LF_PARSER
+/* restrict doesn't work properly*/
+//#define RESTRICT_CHAR
 /* Link Format Parser starts here */
 
 int optionValidation(char* source){ 
@@ -343,7 +348,8 @@ int optionValidation(char* source){
     counter++;
     pch=strchr(pch+1,'=');
   }
-	return counter;
+  if (strlen(source) < 3 || source[0] == '=' || source[strlen(source)-1] == '=') return 0;
+  return counter;
 }
 
 int calOptionSize(char* source, int* type, int* data){
@@ -366,6 +372,16 @@ int parseOption(char * source, char* type, char* data){
 			if (pch != NULL){
 				strncpy(type,source,counter);
 				type[counter] = '\0';
+		
+				/*only allow alphanum and '-'*/
+				#ifdef RESTRICT_CHAR
+				for(int i = 0; i < strlen(type);i++){
+					if(!isalnum(type[i]) && type[i] != '-'){
+						return 0;
+					}
+				}
+				#endif
+				/*only allow alphanum and '-' */				
 				
 				if(pch[1] == '"')
 					strcpy(data,pch+2);
@@ -375,6 +391,16 @@ int parseOption(char * source, char* type, char* data){
 				if(pch[strlen(pch+1)] == '"')
 					data[strlen(data)-1] = '\0';
 					
+				/*only allow alphanum and '-'*/
+				#ifdef RESTRICT_CHAR	
+				for(int i = 0; i < strlen(data);i++){
+					if(!isalnum(data[i]) && data[i] != '-'){
+						return 0;
+					}
+				}
+				#endif				
+				/*only allow alphanum and '-'*/						
+				
 				return 1;
 			}
 		}
@@ -383,18 +409,30 @@ int parseOption(char * source, char* type, char* data){
  
 int calPathSize(char* source){
 	
-	if (source[0] == '<' && source[1] != '/' &&source[strlen(source)-1] == '>' ){
+	if (source[0] == '<' && source[1] != '/' && source[strlen(source)-2] != '/' && source[strlen(source)-1] == '>' ){
 		int path_size = strlen(source)-2;
-		return path_size;
+		if (path_size > 0) return path_size;
+		else return 0;
 	}
-	return -1;
+	return 0;
 }
 int parsePath(char* source, char* path){
 	
-	if (source[0] == '<' && source[1] != '/' &&source[strlen(source)-1] == '>' ){
+	if (calPathSize(source)){ 
 		int path_size = strlen(source)-2;
 		strncpy(path, source+1, path_size);
 		path[path_size] = '\0';
+		
+		/*only allow alphanum and '/'*/	
+		#ifdef RESTRICT_CHAR
+		for(int i = 0; i < path_size;i++){
+			if(!isalnum(path[i]) && path[i] != '/'){
+				return 0;
+			}
+		}
+		#endif
+		/*only allow alphanum and '/'*/
+		 
 		return 1;
 	}
 	return 0;
@@ -442,6 +480,12 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 	  char * pch;
 	  int last_counter = 0;
 	  int counter = 0;
+	  int master_status = 0;
+	  
+	  /* Error Checker*/ 
+	  if(strchr(str,',') != NULL) return 0;
+	  if(str[0] == ';') return 0;
+	  /* Error Checker*/
 	  
 	  pch=strchr(str,';');
 	  while (pch!=NULL)
@@ -459,6 +503,7 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 				int status = pathRegister(old_resource, resource,temp_str);
 			free(temp_str);
 			if (!status) return 0;
+			else master_status = 1;
 		}
 		
 		// in between first and last element of link format
@@ -470,6 +515,7 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 			//TODO : fix this free(), somehow it works now
 			free(temp_str);
 			if (!status) return 0;
+			else master_status = 2;
 		}
 		
 		// last element of link format
@@ -483,11 +529,12 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 			//TODO : fix this free(), somehow it works now
 			free(temp_str); 
 			if (!status) return 0;
+			else master_status = 2;
 		}
 				
 		last_counter = counter;
 	  }
-	  return 1;
+	  return master_status;
 }
 
 	//char str[] ="<sensors>;if=\"temperature-c\";rt=\"sensor;ct=45;title=\"sensor\"";
@@ -499,7 +546,7 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 
 #endif
 
-#ifdef TEMPMODE
+#ifdef TESTING
 	static int quit = 0;
 	static void	handle_sigint(int signum) {
 	  quit = 1;
@@ -530,7 +577,7 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 		char* payloadptr;
 		
 		
-		RESOURCES_ITER((*global_ctx)->resources, r) {
+		RESOURCES_ITER(((*global_ctx))->resources, r) {
 			if(compareString(r->uri.s, topicName)){
 				TopicDataPtr 	temp_data = getTopic(&topicDB,r->uri.s);
 				char*			temp_payload = malloc(sizeof(char)*(message->payloadlen + 2));
@@ -540,6 +587,9 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 				if(!compareString(temp_data->data,temp_payload)){
 					updateTopicData(&topicDB,topicName,0,message->payload,message->payloadlen);
 					r->dirty = 1;
+					/* this can be changed to coap_notify_observers, but coap_notify_observers is static. so either
+					 * create a similir function or change resource.c 
+					 */
 					coap_check_notify((*global_ctx));
 				}
 				free(temp_payload);
@@ -718,6 +768,8 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 	//int status = 0;
 	int status = parseLinkFormat(data_safe,resource, &new_resource);
 	
+	printf("Parser status : %d", status);
+	
 	
 	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
 	if (status){
@@ -783,6 +835,9 @@ static void hnd_put_topic(coap_context_t *ctx ,
             "on topic %s for client with ClientID: %s\n",
         data, resource->uri.s, CLIENTID);
 		resource->dirty = 1;
+		/* this can be changed to coap_notify_observers, but coap_notify_observers is static. so either
+		* create a similir function or change resource.c 
+		*/
 		coap_check_notify(ctx);
 	}
 	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
@@ -857,8 +912,7 @@ static void hnd_post_topic(coap_context_t *ctx ,
 
 	(void)coap_get_data(request, &size, &data);
 	data_safe = coap_malloc(sizeof(char)*(size+1));
-	sprintf(data_safe, "%s", data);
-	//int status = 0;
+	sprintf(data_safe, "%s", data); 
 	int status = parseLinkFormat(data_safe,resource, &new_resource);
 	
 	
