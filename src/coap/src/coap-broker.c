@@ -68,6 +68,7 @@ int			updateTopicData(TopicDataPtr *sPtr,
 
 int 		DBEmpty( TopicDataPtr sPtr );
 void 		printDB( TopicDataPtr currentPtr );
+void 		cleanDB( TopicDataPtr *sPtr );
 
 int 		compareString(char* a, char* b){
 	if (a == NULL || b == NULL) return 0;
@@ -332,11 +333,27 @@ void printDB( TopicDataPtr currentPtr )
     } /* end else */
 
 } /* end function printList */
+
+/* Clean the list */
+void cleanDB( TopicDataPtr *sPtr )
+{ 
+ 
+ while(!DBEmpty(*sPtr)){ 
+	TopicDataPtr tempPtr = NULL;     /* temporary node pointer */
+        tempPtr = *sPtr; /* hold onto node being removed */
+        *sPtr = ( *sPtr )->nextPtr; /* de-thread the node */
+        free( tempPtr->data );
+        free( tempPtr->path );
+        free( tempPtr ); /* free the de-threaded node */ 
+    } /* end if */
+
+} /* end function printList */
+
 #endif
 
 #ifdef LF_PARSER
 /* restrict doesn't work properly*/
-//#define RESTRICT_CHAR
+#define RESTRICT_CHAR
 /* Link Format Parser starts here */
 
 int optionValidation(char* source){ 
@@ -467,7 +484,10 @@ int pathRegister(coap_resource_t *new_resource, coap_resource_t **resource , cha
 		int status = parsePath(temp_str, rel_path);
 		if(status){
 			char* abs_path = malloc(sizeof(char) * (total_size + 1));
-			sprintf(abs_path,"%s/%s", new_resource->uri.s, rel_path);
+			char* parent_path = malloc(sizeof(char) * (new_resource->uri.length + 2));
+			snprintf(parent_path,new_resource->uri.length+1, "%s", new_resource->uri.s);
+			sprintf(abs_path,"%s/%s", parent_path, rel_path);
+			free(parent_path);
 			*resource = coap_resource_init(abs_path, strlen(abs_path), COAP_RESOURCE_FLAGS_RELEASE_URI); 
 		}
 		free(rel_path);
@@ -554,7 +574,8 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 	coap_context_t**  	global_ctx;
 	MQTTClient* 		global_client;
 	TopicDataPtr 		topicDB = NULL; /* initially there are no nodes */
-
+	
+	
 #endif
 
 #ifdef MQTTTEST
@@ -649,8 +670,15 @@ static void hnd_post_broker(coap_context_t *ctx,
              coap_pdu_t *request,
              str *token,
              coap_pdu_t *response);
-
-
+             
+static void hnd_delete_broker(coap_context_t *ctx,
+             struct coap_resource_t *resource,
+             const coap_endpoint_t *local_interface,
+             coap_address_t *peer,
+             coap_pdu_t *request,
+             str *token,
+             coap_pdu_t *response);
+             
 int main(int argc, char* argv[])
 {
 	coap_context_t*  ctx;
@@ -697,6 +725,7 @@ int main(int argc, char* argv[])
 	broker_resource = coap_resource_init(broker_path, strlen(broker_path), 0);
 	coap_register_handler(broker_resource, COAP_REQUEST_GET, hnd_get_broker);
 	coap_register_handler(broker_resource, COAP_REQUEST_POST, hnd_post_broker);
+	coap_register_handler(broker_resource, COAP_REQUEST_DELETE, hnd_delete_broker);
 	coap_add_attr(broker_resource, (unsigned char *)"ct", 2, (unsigned char *)"40", strlen("40"), 0); //40 :link
 	coap_add_attr(broker_resource, (unsigned char *)"rt", 2, (unsigned char *)"core.ps", strlen("core.ps"), 0);
 	coap_add_resource(ctx, broker_resource);
@@ -705,7 +734,7 @@ int main(int argc, char* argv[])
 	
 	signal(SIGINT, handle_sigint);
 	/*Listen for incoming connections*/	
-	while (!quit ) {
+	while (!quit) {
         FD_ZERO(&readfds);
         FD_SET( ctx->sockfd, &readfds );
         /* Block until there is something to read from the socket */
@@ -723,9 +752,10 @@ int main(int argc, char* argv[])
         //coap_check_notify(ctx);
     }
     
-    MQTTClient_disconnect(client, 10000);
-    MQTTClient_destroy(&client);
     coap_free_context(ctx);  
+	MQTTClient_disconnect(client, 10000);
+    MQTTClient_destroy(&client);
+    return rc;
 }
 
 static void
@@ -763,8 +793,8 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
     unsigned char *data_safe;
 
 	(void)coap_get_data(request, &size, &data);
-	data_safe = coap_malloc(sizeof(char)*(size+1));
-	sprintf(data_safe, "%s", data);
+	data_safe = coap_malloc(sizeof(char)*(size+2));
+	snprintf(data_safe,size+1, "%s", data);
 	//int status = 0;
 	int status = parseLinkFormat(data_safe,resource, &new_resource);
 	
@@ -786,6 +816,16 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 	coap_free(data_safe);
 }
 
+static void hnd_delete_broker(coap_context_t *ctx,
+             struct coap_resource_t *resource,
+             const coap_endpoint_t *local_interface,
+             coap_address_t *peer,
+             coap_pdu_t *request,
+             str *token,
+             coap_pdu_t *response){
+				 
+	handle_sigint(0);
+}
 static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource, 
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
               coap_pdu_t *request, str *token, coap_pdu_t *response){
@@ -911,8 +951,8 @@ static void hnd_post_topic(coap_context_t *ctx ,
     unsigned char *data_safe;
 
 	(void)coap_get_data(request, &size, &data);
-	data_safe = coap_malloc(sizeof(char)*(size+1));
-	sprintf(data_safe, "%s", data); 
+	data_safe = coap_malloc(sizeof(char)*(size+2));
+	snprintf(data_safe,size+1, "%s", data);
 	int status = parseLinkFormat(data_safe,resource, &new_resource);
 	
 	
