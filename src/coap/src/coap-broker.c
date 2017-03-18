@@ -476,19 +476,19 @@ int optionRegister(coap_resource_t **resource , char* temp_str){
 	return 0;
 }
 
-int pathRegister(coap_resource_t *new_resource, coap_resource_t **resource , char* temp_str){
+int pathRegister(coap_resource_t *old_resource, coap_resource_t **new_resource , char* temp_str){
 	
 	if (calPathSize(temp_str) > 0){
-		int total_size = new_resource->uri.length + calPathSize(temp_str);
+		int total_size = old_resource->uri.length + calPathSize(temp_str) + 2; // supposed to be 1, but for safety reason I add 1 more byte
 		char* rel_path = malloc(sizeof(char) * (calPathSize(temp_str)+1)); 
 		int status = parsePath(temp_str, rel_path);
 		if(status){
 			char* abs_path = malloc(sizeof(char) * (total_size + 1));
-			char* parent_path = malloc(sizeof(char) * (new_resource->uri.length + 2));
-			snprintf(parent_path,new_resource->uri.length+1, "%s", new_resource->uri.s);
+			char* parent_path = malloc(sizeof(char) * (old_resource->uri.length + 2));
+			snprintf(parent_path,old_resource->uri.length+1, "%s", old_resource->uri.s);
 			sprintf(abs_path,"%s/%s", parent_path, rel_path);
 			free(parent_path);
-			*resource = coap_resource_init(abs_path, strlen(abs_path), COAP_RESOURCE_FLAGS_RELEASE_URI); 
+			*new_resource = coap_resource_init(abs_path, strlen(abs_path), COAP_RESOURCE_FLAGS_RELEASE_URI); 
 		}
 		free(rel_path);
 		return status;
@@ -556,12 +556,7 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 	  }
 	  return master_status;
 }
-
-	//char str[] ="<sensors>;if=\"temperature-c\";rt=\"sensor;ct=45;title=\"sensor\"";
-	//parseLinkFormat(str, &pathRegister, &optionRegister);
-
-
-
+ 
 /* Link Format Parser ends here */
 
 #endif
