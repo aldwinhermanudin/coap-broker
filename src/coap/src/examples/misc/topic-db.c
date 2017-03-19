@@ -42,6 +42,7 @@ int			updateTopicData(TopicDataPtr *sPtr,
 
 int 		DBEmpty( TopicDataPtr sPtr );
 void 		printDB( TopicDataPtr currentPtr );
+void 		cleanDB( TopicDataPtr* sPtr );
 
 int 		compareString(char* a, char* b){
 	if (a == NULL || b == NULL) return 0;
@@ -53,7 +54,23 @@ int 		compareString(char* a, char* b){
 int main()
 { 
     TopicDataPtr startPtr = NULL; /* initially there are no nodes */
-     
+    int total_topic = 1000;
+    for (int ctr = 0; ctr < total_topic; ctr++) {
+		char topic_name[100];
+		sprintf(topic_name,"test%d",ctr);
+		addTopicWEC(&startPtr, topic_name, strlen(topic_name), time(NULL)); 
+	}  
+	printDB(startPtr);
+	cleanDB(&startPtr);
+	printDB(startPtr);
+	/*
+	for (int ctr = 0; ctr < total_topic; ctr++) {
+		char topic_name[100];
+		sprintf(topic_name,"test%d",ctr);
+		deleteTopic(&startPtr, topic_name); 
+	}  
+	printDB(startPtr);
+    
     int ftest[9];
     ftest[0] = getTopic(&startPtr, "LALALILILELO") != NULL ? 1 : 0;
     ftest[1] = setTopic(&startPtr, "LALALILILELO", "lala",4, 0, 0 );
@@ -114,7 +131,7 @@ int main()
     
     deleteTopic(&startPtr, "test");
     deleteTopic(&startPtr, "test123");
-    printDB(startPtr); 
+    printDB(startPtr); */
     return 0; /* indicates successful termination */
 
 } /* end main */
@@ -374,5 +391,20 @@ void printDB( TopicDataPtr currentPtr )
 
         printf( "NULL\n\n" );
     } /* end else */
+
+} /* end function printList */
+
+/* Clean the list */
+void cleanDB( TopicDataPtr *sPtr )
+{ 
+ 
+ while(!DBEmpty(*sPtr)){ 
+	TopicDataPtr tempPtr = NULL;     /* temporary node pointer */
+        tempPtr = *sPtr; /* hold onto node being removed */
+        *sPtr = ( *sPtr )->nextPtr; /* de-thread the node */
+        free( tempPtr->data );
+        free( tempPtr->path );
+        free( tempPtr ); /* free the de-threaded node */ 
+    } /* end if */
 
 } /* end function printList */
