@@ -62,6 +62,7 @@ int			updateTopicData(TopicDataPtr *sPtr,
 
 int 		DBEmpty( TopicDataPtr sPtr );
 void 		printDB( TopicDataPtr currentPtr );
+void 		cleanDB( TopicDataPtr *sPtr );
 
 int 		compareString(char* a, char* b){
 	if (a == NULL || b == NULL) return 0;
@@ -327,15 +328,30 @@ void printDB( TopicDataPtr currentPtr )
 
 } /* end function printList */
 
+void cleanDB( TopicDataPtr *sPtr )
+{ 
+ 
+ while(!DBEmpty(*sPtr)){ 
+	TopicDataPtr tempPtr = NULL;     /* temporary node pointer */
+        tempPtr = *sPtr; /* hold onto node being removed */
+        *sPtr = ( *sPtr )->nextPtr; /* de-thread the node */
+        free( tempPtr->data );
+        free( tempPtr->path );
+        free( tempPtr ); /* free the de-threaded node */ 
+    } /* end if */
+
+} /* end function printList */
+
 #endif
 
 #ifdef TEMPMODE
+
+	TopicDataPtr topicDB = NULL; /* initially there are no nodes */
 	static int quit = 0;
 	static void	handle_sigint(int signum) {
 	  quit = 1;
 	}
 
-	TopicDataPtr topicDB = NULL; /* initially there are no nodes */
 #endif
  
 static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource, 
@@ -429,7 +445,7 @@ int main(int argc, char* argv[])
         // coap_check_notify is needed if there is a observable resource
         coap_check_notify(ctx);
     }
-    
+    coap_delete_all_resources(ctx);
     coap_free_context(ctx);  
 }
 
@@ -457,7 +473,7 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 		unsigned char *data_safe = coap_malloc(sizeof(char)*(size+2));
 		snprintf(data_safe,size+1, "%s", data);
 		addTopicWEC(&topicDB, data_safe, size, time(NULL)); 
-		new_resource = coap_resource_init(data_safe, strlen(data_safe), 0);
+		new_resource = coap_resource_init(data_safe, strlen(data_safe), COAP_RESOURCE_FLAGS_RELEASE_URI);
 		coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
 		coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
 		coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
@@ -494,7 +510,7 @@ static void hnd_delete_topic(coap_context_t *ctx ,
                 coap_pdu_t *request ,
                 str *token ,
                 coap_pdu_t *response ){
-					
+	cleanDB(&topicDB);
 	response->hdr->code = COAP_RESPONSE_CODE(201);
 }
                 
