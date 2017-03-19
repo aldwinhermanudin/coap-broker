@@ -22,14 +22,40 @@
    
 #define LL_DATABASE
 #define LF_PARSER
+#define LIBCOAP_MOD
 #define TESTING
 #define MQTTTEST
-
-#ifdef __GNUC__
-#define UNUSED_PARAM __attribute__ ((unused))
-#else /* not a GCC */
-#define UNUSED_PARAM
-#endif /* GCC */
+ 
+#ifdef LIBCOAP_MOD
+void coapDeleteAttr(coap_attr_t *attr) {
+     if (!attr)
+       return; 
+     coap_free(attr->name.s); 
+     coap_free(attr->value.s);
+    
+     coap_free_type(COAP_RESOURCEATTR, attr); 
+   }           
+void coapFreeResource(coap_resource_t *resource){
+	 coap_attr_t *attr, *tmp;
+     coap_subscription_t *obs, *otmp;
+   
+     assert(resource);
+   
+     /* delete registered attributes */
+     LL_FOREACH_SAFE(resource->link_attr, attr, tmp) coapDeleteAttr(attr);
+   
+     if (resource->flags & COAP_RESOURCE_FLAGS_RELEASE_URI)
+       coap_free(resource->uri.s);
+   
+     /* free all elements from resource->subscribers */
+     // modifying this to re-create free resource. CHANGED : COAP_FREE_TYPE(subscription, obs) to coap_free(obs) 
+     // check original coap_free_resource()
+     LL_FOREACH_SAFE(resource->subscribers, obs, otmp) coap_free(obs);
+ 
+     coap_free_type(COAP_RESOURCE, resource); 
+}
+	
+#endif
 
 #ifdef LL_DATABASE  
 /* self-referential structure */
@@ -534,8 +560,11 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 				int status = optionRegister(resource,temp_str); 
 			//TODO : fix this free(), somehow it works now
 			free(temp_str);
-			if (!status) return 0;
-			else master_status = 2;
+			if (!status) {
+				coapFreeResource(*resource);
+				return 0;
+			}
+			else master_status = 1;
 		}
 		
 		// last element of link format
@@ -548,8 +577,11 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 				int status = optionRegister(resource,temp_str); 
 			//TODO : fix this free(), somehow it works now
 			free(temp_str); 
-			if (!status) return 0;
-			else master_status = 2;
+			if (!status) {
+				coapFreeResource(*resource);
+				return 0;
+			}
+			else master_status = 1;
 		}
 				
 		last_counter = counter;
@@ -561,6 +593,8 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 
 #endif
 
+
+
 #ifdef TESTING
 	static int quit = 0;
 	static void	handle_sigint(int signum) {
@@ -569,8 +603,6 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 	coap_context_t**  	global_ctx;
 	MQTTClient* 		global_client;
 	TopicDataPtr 		topicDB = NULL; /* initially there are no nodes */
-	
-	
 #endif
 
 #ifdef MQTTTEST
@@ -741,6 +773,7 @@ int main(int argc, char* argv[])
             if ( FD_ISSET( ctx->sockfd, &readfds ) ) 
                 coap_read( ctx );       
         } 
+        printDB(topicDB);
         
         // coap_check_notify is needed if there is a observable resource
         // either put here or in put handler
@@ -782,31 +815,99 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
               coap_pdu_t *request, str *token, coap_pdu_t *response) 
 {
-	coap_resource_t *new_resource;
+
+	coap_resource_t *new_resource = NULL;
+	
+	/* parse payload */
 	size_t size;
     unsigned char *data;
     unsigned char *data_safe;
-
 	(void)coap_get_data(request, &size, &data);
 	data_safe = coap_malloc(sizeof(char)*(size+2));
 	snprintf(data_safe,size+1, "%s", data);
 	//int status = 0;
 	int status = parseLinkFormat(data_safe,resource, &new_resource);
+	/* parse payload */
+	
+	/* to get max_age value and ct */
+	coap_opt_t *option;
+	coap_opt_iterator_t opt_iter; 
+	coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL);
+	unsigned char* max_age_val;
+	unsigned short max_age_len;	 
+	int rel_topic_ma;
+	int topic_ma_status = 0;
+	time_t topic_ma = 0;
+	
+	while ((option = coap_option_next(&opt_iter))) {
+		// changing COAP_OPTION_MAXAGE into any coap Option will return the selected option type
+	   if (opt_iter.type == COAP_OPTION_MAXAGE) { 
+				topic_ma_status = 1;
+				max_age_len = coap_opt_length(option);
+				max_age_val = malloc(sizeof(char) * (max_age_len+2));
+				snprintf(max_age_val, max_age_len +1, "%s", coap_opt_value(option));
+				rel_topic_ma = atoi(max_age_val);
+				free(max_age_val);
+				break;
+	   }
+	}
+	
+	if(topic_ma_status){
+		if(rel_topic_ma < 1) { // if max-age input is 0 or below
+			topic_ma = 0;	// set topic_ma to 0, which means topic never expires
+		}
+		else{
+			topic_ma = time(NULL) + rel_topic_ma;
+		}
+	}
+	else{
+		topic_ma = 0;
+	}
+	printf("topic max-age : %d\n",rel_topic_ma);
+	printf("topic abs max-age : %ld\n",topic_ma);
+	/* to get max_age value and ct*/
 	
 	printf("Parser status : %d", status);
 	
-	
-	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
+	/* check whether resource contain ct */
+	if (status)	{
+		if(coap_find_attr(new_resource,(const unsigned char*) "ct", 2) == NULL){
+			printf("ct not found\n"); 
+			coapFreeResource(new_resource);
+			status=0;
+		}		
+	}	
+	/* check whether resource contain ct */
+	 
 	if (status){
-		MQTTClient_subscribe(*global_client, new_resource->uri.s, QOS);
-		coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
-		coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
-		coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
-		coap_register_handler(new_resource, COAP_REQUEST_DELETE, hnd_delete_topic);
-		new_resource->observable = 1;
-		coap_add_resource(ctx, new_resource);
-		coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
-		addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, time(NULL));
+		int found_resource = 0;
+		RESOURCES_ITER(ctx->resources, r) {
+			if(compareString(r->uri.s, new_resource->uri.s)){
+				found_resource = 1;
+				break;
+			}
+		}
+		
+		if(found_resource){
+			updateTopicInfo(&topicDB, new_resource->uri.s, topic_ma);
+			coapFreeResource(new_resource);
+			response->hdr->code = COAP_RESPONSE_CODE(403);
+		}
+		else{		
+			MQTTClient_subscribe(*global_client, new_resource->uri.s, QOS);
+			coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
+			coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
+			coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
+			coap_register_handler(new_resource, COAP_REQUEST_DELETE, hnd_delete_topic);
+			new_resource->observable = 1;
+			coap_add_resource(ctx, new_resource);
+			coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
+			addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, topic_ma);
+			response->hdr->code = COAP_RESPONSE_CODE(201) ;
+		}
+	}
+	else{
+		response->hdr->code = COAP_RESPONSE_CODE(400);
 	}
 	coap_free(data_safe);
 }
@@ -877,39 +978,6 @@ static void hnd_put_topic(coap_context_t *ctx ,
 	}
 	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
 }
- 
-void coapDeleteAttr(coap_attr_t *attr) {
-     if (!attr)
-       return; 
-     coap_free(attr->name.s); 
-     coap_free(attr->value.s);
-    
-     coap_free_type(COAP_RESOURCEATTR, attr); 
-   }           
-void coapFreeResource(coap_resource_t *resource){
-	 coap_attr_t *attr, *tmp;
-     coap_subscription_t *obs, *otmp;
-   
-     assert(resource);
-   
-     /* delete registered attributes */
-     LL_FOREACH_SAFE(resource->link_attr, attr, tmp) coapDeleteAttr(attr);
-   
-     if (resource->flags & COAP_RESOURCE_FLAGS_RELEASE_URI)
-       coap_free(resource->uri.s);
-   
-     /* free all elements from resource->subscribers */
-     // modifying this to re-create free resource. CHANGED : COAP_FREE_TYPE(subscription, obs) to coap_free(obs) 
-     // check original coap_free_resource()
-     LL_FOREACH_SAFE(resource->subscribers, obs, otmp) coap_free(obs);
-   
-   #ifdef WITH_LWIP
-     memp_free(MEMP_COAP_RESOURCE, resource);
-   #endif
-   #ifndef WITH_LWIP
-     coap_free_type(COAP_RESOURCE, resource);
-   #endif 
-}
 
 static void hnd_delete_topic(coap_context_t *ctx ,
                 struct coap_resource_t *resource ,
@@ -940,28 +1008,98 @@ static void hnd_post_topic(coap_context_t *ctx ,
                 coap_pdu_t *request ,
                 str *token ,
                 coap_pdu_t *response ){
-					coap_resource_t *new_resource;
+coap_resource_t *new_resource = NULL;
+	
+	/* parse payload */
 	size_t size;
     unsigned char *data;
     unsigned char *data_safe;
-
 	(void)coap_get_data(request, &size, &data);
 	data_safe = coap_malloc(sizeof(char)*(size+2));
 	snprintf(data_safe,size+1, "%s", data);
+	//int status = 0;
 	int status = parseLinkFormat(data_safe,resource, &new_resource);
+	/* parse payload */
 	
+	/* to get max_age value and ct */
+	coap_opt_t *option;
+	coap_opt_iterator_t opt_iter; 
+	coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL);
+	unsigned char* max_age_val;
+	unsigned short max_age_len;	 
+	int rel_topic_ma;
+	int topic_ma_status = 0;
+	time_t topic_ma = 0;
 	
-	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
+	while ((option = coap_option_next(&opt_iter))) {
+		// changing COAP_OPTION_MAXAGE into any coap Option will return the selected option type
+	   if (opt_iter.type == COAP_OPTION_MAXAGE) { 
+				topic_ma_status = 1;
+				max_age_len = coap_opt_length(option);
+				max_age_val = malloc(sizeof(char) * (max_age_len+2));
+				snprintf(max_age_val, max_age_len +1, "%s", coap_opt_value(option));
+				rel_topic_ma = atoi(max_age_val);
+				free(max_age_val);
+				break;
+	   }
+	}
+	
+	if(topic_ma_status){
+		if(rel_topic_ma < 1) { // if max-age input is 0 or below
+			topic_ma = 0;	// set topic_ma to 0, which means topic never expires
+		}
+		else{
+			topic_ma = time(NULL) + rel_topic_ma;
+		}
+	}
+	else{
+		topic_ma = 0;
+	}
+	printf("topic max-age : %d\n",rel_topic_ma);
+	printf("topic abs max-age : %ld\n",topic_ma);
+	/* to get max_age value and ct*/
+	
+	printf("Parser status : %d", status);
+	
+	/* check whether resource contain ct */
+	if (status)	{
+		if(coap_find_attr(new_resource,(const unsigned char*) "ct", 2) == NULL){
+			printf("ct not found\n"); 
+			coapFreeResource(new_resource);
+			status=0;
+		}		
+	}	
+	/* check whether resource contain ct */
+	 
 	if (status){
-		MQTTClient_subscribe(*global_client, new_resource->uri.s, QOS);
-		coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
-		coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
-		coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
-		coap_register_handler(new_resource, COAP_REQUEST_DELETE, hnd_delete_topic);
-		new_resource->observable = 1;
-		coap_add_resource(ctx, new_resource);
-		coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
-		addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, time(NULL));
+		int found_resource = 0;
+		RESOURCES_ITER(ctx->resources, r) {
+			if(compareString(r->uri.s, new_resource->uri.s)){
+				found_resource = 1;
+				break;
+			}
+		}
+		
+		if(found_resource){
+			updateTopicInfo(&topicDB, new_resource->uri.s, topic_ma);
+			coapFreeResource(new_resource);
+			response->hdr->code = COAP_RESPONSE_CODE(403);
+		}
+		else{		
+			MQTTClient_subscribe(*global_client, new_resource->uri.s, QOS);
+			coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
+			coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
+			coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
+			coap_register_handler(new_resource, COAP_REQUEST_DELETE, hnd_delete_topic);
+			new_resource->observable = 1;
+			coap_add_resource(ctx, new_resource);
+			coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
+			addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, topic_ma);
+			response->hdr->code = COAP_RESPONSE_CODE(201) ;
+		}
+	}
+	else{
+		response->hdr->code = COAP_RESPONSE_CODE(400);
 	}
 	coap_free(data_safe);
 }
