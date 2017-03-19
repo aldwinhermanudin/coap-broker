@@ -3,6 +3,7 @@ import random
 import datetime
 import telepot
 import subprocess
+import requests
 
 """
 After **inserting token** in the source code, run it:
@@ -26,11 +27,29 @@ def handle(msg):
     print 'Got command: %s' % command
 
     if command == '/ngrok_start':
-        subprocess.Popen(["nohup", "/opt/ngrok/start.sh"])
+		subprocess.Popen(["nohup", "/opt/ngrok/start.sh"])
+		bot.sendMessage(chat_id, 'Starting tunnel....')
+		time.sleep(10)
+		r = requests.get('http://localhost:4040/api/tunnels')
+		reply = "Your tunnel URL is " + str(r.json()['tunnels'][0]['public_url'])
+		bot.sendMessage(chat_id, reply)
+		
     elif command == '/ngrok_stop':
         subprocess.Popen(["nohup", "/opt/ngrok/terminator.sh"])
+        bot.sendMessage(chat_id, 'Tunnel Killed')
     elif command == '/time':
         bot.sendMessage(chat_id, str(datetime.datetime.now()))
+    elif command == 'waddup':
+        bot.sendMessage(chat_id, "Good man, thanks.")
+    elif command == '/ngrok_url':
+		try:
+			r = requests.get('http://localhost:4040/api/tunnels')
+			reply = "Your tunnel URL is " + str(r.json()['tunnels'][0]['public_url'])
+			bot.sendMessage(chat_id, reply)
+		
+		except requests.exceptions.RequestException as e:
+			#bot.sendMessage(chat_id, str(format(e)))
+			bot.sendMessage(chat_id, 'An error occur. Probably tunnel isn\'t running.')
 
 bot = telepot.Bot('376465837:AAGNeFri5-taeC1sPiqoPkPomTGzcG-NSlQ')
 bot.message_loop(handle)
