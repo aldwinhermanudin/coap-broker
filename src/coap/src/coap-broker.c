@@ -466,15 +466,15 @@ int parsePath(char* source, char* path){
 		strncpy(path, source+1, path_size);
 		path[path_size] = '\0';
 		
-		/*only allow alphanum and '/'*/	
+		/*only allow alphanum and '/' and '-'*/	
 		#ifdef RESTRICT_CHAR
 		for(int i = 0; i < path_size;i++){
-			if(!isalnum(path[i]) && path[i] != '/'){
+			if(!isalnum(path[i]) && path[i] != '/' && path[i] != '-'){
 				return 0;
 			}
 		}
 		#endif
-		/*only allow alphanum and '/'*/
+		/*only allow alphanum and '/' and '-'*/
 		 
 		return 1;
 	}
@@ -986,19 +986,53 @@ static void hnd_delete_topic(coap_context_t *ctx ,
                 coap_pdu_t *request ,
                 str *token ,
                 coap_pdu_t *response ){
-					
-	int status = deleteTopic(&topicDB, resource->uri.s);
-	/* FIXME: link attributes for resource have been created dynamically
-	* using coap_malloc() and must be released. */
-	if (status){
+	int counter = 0;
+	//TODO: repair deleted on a tpic that have many subtopic.
+	char* deleted_sub_uri = malloc(sizeof(char) *(resource->uri.length+3));
+	snprintf(deleted_sub_uri, (resource->uri.length+1)+1, "%s/", resource->uri.s);
+	
+	counter = deleteTopic(&topicDB, resource->uri.s);
+	
+	if (counter){
 		MQTTClient_unsubscribe(*global_client, resource->uri.s);
 		RESOURCES_DELETE(ctx->resources, resource);
 		coapFreeResource(resource);
+	
+		RESOURCES_ITER(ctx->resources, r) {
+			if (strstr(r->uri.s, deleted_sub_uri) != NULL){ 
+				if (deleteTopic(&topicDB, r->uri.s)){
+					MQTTClient_unsubscribe(*global_client, r->uri.s);
+					RESOURCES_DELETE(ctx->resources, r);
+					coapFreeResource(r);	// modified coap_free_resource
+					counter++;
+				} 
+			}
+		}
+	}
+	if(counter){
 		response->hdr->code = COAP_RESPONSE_CODE(202);
 	}
-	else{
+	else {
 		response->hdr->code = COAP_RESPONSE_CODE(404);
 	}
+	
+	int counter_digit = 0;
+	char* payload_data;
+	int counter_temp = counter?counter : 1;
+	while(counter_temp != 0)
+    { 
+        counter_temp /= 10;
+        ++counter_digit;
+    }    
+	payload_data = malloc(sizeof(int) * (counter_digit+2));
+	snprintf(payload_data,counter_digit+1,"%d", counter);
+	
+	unsigned char buf[3];
+	coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
+	coap_add_data  (response, strlen(payload_data), payload_data);	
+		
+	free(payload_data);
+	free(deleted_sub_uri);
 }
                 
 static void hnd_post_topic(coap_context_t *ctx ,
