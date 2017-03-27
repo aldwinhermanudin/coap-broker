@@ -1164,11 +1164,14 @@ coap_resource_t *new_resource = NULL;
 	(void)coap_get_data(request, &size, &data);
 	data_safe = coap_malloc(sizeof(char)*(size+2));
 	snprintf(data_safe,size+1, "%s", data);
+	int ct_value_valid = 1;
 	//int status = 0;
 	int status = parseLinkFormat(data_safe,resource, &new_resource);
 	/* parse payload */
 	
-	/* to get max_age value and ct */
+	coap_free(data_safe);
+	
+	/* to get max_age value */
 	coap_opt_t *option;
 	coap_opt_iterator_t opt_iter; 
 	coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL);
@@ -1204,20 +1207,51 @@ coap_resource_t *new_resource = NULL;
 	}
 	printf("topic max-age : %d\n",rel_topic_ma);
 	printf("topic abs max-age : %ld\n",topic_ma);
-	/* to get max_age value and ct*/
+	/* to get max_age value*/
 	
 	printf("Parser status : %d", status);
 	
-	/* check whether resource contain ct */
+	/* Unsupported content format for topic. */
 	if (status)	{
-		if(coap_find_attr(new_resource,(const unsigned char*) "ct", 2) == NULL){
+		coap_attr_t* new_resource_attr = coap_find_attr(new_resource,(const unsigned char*) "ct", 2);
+		
+		if(new_resource_attr == NULL){
 			printf("ct not found\n"); 
 			coapFreeResource(new_resource);
-			status=0;
-		}		
+			status=0; // malformed request indicator
+		}
+		
+		else {
+			int is_digit = 1;
+			for(int i = 0; i < new_resource_attr->value.length;i++){
+				if (!isdigit(new_resource_attr->value.s[i])){
+					is_digit = 0;
+					break;
+				}
+			}
+			
+			if(is_digit){
+				int ct_value = atoi(new_resource_attr->value.s);
+				if(ct_value < 0 || ct_value > 65535){ 
+					status = 0;
+					ct_value_valid = 0;	
+				}
+			}
+			else { 
+				status = 0;
+				ct_value_valid = 0;	
+			}		
+		}	
+		
+		if ( !ct_value_valid ){
+			response->hdr->code = COAP_RESPONSE_CODE(406);
+			coapFreeResource(new_resource); 
+			return;
+		}	
 	}	
-	/* check whether resource contain ct */
-	 
+	/* Unsupported content format for topic. */
+	
+	/* Topic already exists. */ 
 	if (status){
 		int found_resource = 0;
 		RESOURCES_ITER(ctx->resources, r) {
@@ -1227,12 +1261,18 @@ coap_resource_t *new_resource = NULL;
 			}
 		}
 		
+		
 		if(found_resource){
 			updateTopicInfo(&topicDB, new_resource->uri.s, topic_ma);
 			coapFreeResource(new_resource);
-			response->hdr->code = COAP_RESPONSE_CODE(403);
+			response->hdr->code = COAP_RESPONSE_CODE(403); 
+			return ;
 		}
-		else{		
+	}
+	/* Topic already exists. */
+	
+	/* Successful Creation of the topic */
+	if (status){		 	
 			MQTTClient_subscribe(*global_client, new_resource->uri.s, QOS);
 			coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
 			coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
@@ -1243,11 +1283,15 @@ coap_resource_t *new_resource = NULL;
 			coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
 			addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, topic_ma);
 			response->hdr->code = COAP_RESPONSE_CODE(201) ;
-		}
+			return ; 
 	}
-	else{
+	/* Successful Creation of the topic */
+	
+	/* malformed request */
+	if (!status){
 		response->hdr->code = COAP_RESPONSE_CODE(400);
-	}
-	coap_free(data_safe);
+		return ; 
+	} 
+	/* malformed request */
 }
 
