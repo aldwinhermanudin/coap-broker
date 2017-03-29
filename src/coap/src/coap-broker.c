@@ -26,6 +26,8 @@
 #define TESTING
 #define MQTTTEST
  
+// re-commit for notes on changes 
+ 
 #ifdef LIBCOAP_MOD
 void coapDeleteAttr(coap_attr_t *attr) {
      if (!attr)
