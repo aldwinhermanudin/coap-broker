@@ -23,8 +23,8 @@
 #define LL_DATABASE
 #define LF_PARSER
 #define LIBCOAP_MOD
-#define TESTING
-#define MQTTTEST
+#define GLOBAL_DATA
+#define MQTT_CLIENT
  
 // re-commit for notes on changes 
  
@@ -595,26 +595,29 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 
 #endif
 
-#ifdef TESTING
+#ifdef GLOBAL_DATA
 
 	coap_context_t**  	global_ctx;
 	MQTTClient* 		global_client;
 	TopicDataPtr 		topicDB = NULL; /* initially there are no nodes */
+	char broker_path[8] = "ps";
 	
 	static int quit = 0;
-	static void	handle_sigint(int signum) {
-	  quit = 1;
-	  // TODO: Need more testing
-	  RESOURCES_ITER((*global_ctx)->resources, r) {
-		deleteTopic(&topicDB, r->uri.s);
-		MQTTClient_unsubscribe(*global_client, r->uri.s);
-		RESOURCES_DELETE((*global_ctx)->resources, r);
-		coapFreeResource(r);
-	  } 
-	
-	  coap_free_context((*global_ctx));  
-	  MQTTClient_disconnect((*global_client), 10000);
-      MQTTClient_destroy(global_client);
+	static void	handleSIGINT(int signum) {
+		quit = 1;
+		
+		RESOURCES_ITER((*global_ctx)->resources, r) {
+			if(!compareString(r->uri.s, broker_path)){
+				deleteTopic(&topicDB, r->uri.s);
+				MQTTClient_unsubscribe(*global_client, r->uri.s);
+				RESOURCES_DELETE((*global_ctx)->resources, r);
+				coapFreeResource(r);
+			}
+		}	 
+		coap_free_context((*global_ctx));  
+		MQTTClient_disconnect((*global_client), 10000);
+		MQTTClient_destroy(global_client);
+		exit(0);
 	}
 	
 	void topicMaxAgeMonitor( TopicDataPtr currentPtr ){
@@ -654,7 +657,7 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 	}
 #endif
 
-#ifdef MQTTTEST
+#ifdef MQTT_CLIENT
 	#define ADDRESS     "tcp://localhost:1883"
 	#define CLIENTID    "CoAPBroker" 
 	#define QOS         1
@@ -664,7 +667,7 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 		
 	void delivered(void *context, MQTTClient_deliveryToken dt)
 	{
-		printf("Message with token value %d delivery confirmed\n", dt);
+		debug("Message with token value %d delivery confirmed\n", dt);
 		deliveredtoken = dt;
 	}
 
@@ -673,20 +676,16 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 		int i;
 		char* payloadptr;
 		
-		
 		RESOURCES_ITER(((*global_ctx))->resources, r) {
 			if(compareString(r->uri.s, topicName)){
 				TopicDataPtr 	temp_data = getTopic(&topicDB,r->uri.s);
 				char*			temp_payload = malloc(sizeof(char)*(message->payloadlen + 2));
 				snprintf(temp_payload, (message->payloadlen)+1, "%s", (char*)message->payload);
-				printf("Data from DB : %s\n", temp_data->data);
-				printf("Data from MQTT : %s\n", temp_payload);
+				debug("Data from DB : %s\n", temp_data->data);
+				debug("Data from MQTT : %s\n", temp_payload);
 				if(!compareString(temp_data->data,temp_payload)){
 					updateTopicData(&topicDB,topicName,0,message->payload,message->payloadlen);
-					r->dirty = 1;
-					/* this can be changed to coap_notify_observers, but coap_notify_observers is static. so either
-					 * create a similir function or change resource.c 
-					 */
+					r->dirty = 1; 
 					coap_check_notify((*global_ctx));
 				}
 				free(temp_payload);
@@ -701,8 +700,7 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 
 	void connlost(void *context, char *cause)
 	{
-		printf("\nConnection lost\n");
-		printf("     cause: %s\n", cause);
+		debug("\nConnection lost cause: %s\n", cause);
 	}
 
 #endif
@@ -757,24 +755,22 @@ static void hnd_delete_broker(coap_context_t *ctx,
              
 int main(int argc, char* argv[])
 {
-	coap_context_t*  ctx;
-	coap_address_t   serv_addr;
-	coap_resource_t* broker_resource;
-	fd_set           readfds;    
-	global_ctx	= &ctx;
-	char broker_path[8] = "ps";
+	coap_context_t*  	ctx;
+	coap_address_t   	serv_addr;
+	coap_resource_t* 	broker_resource;
+	fd_set         		readfds;    
+	global_ctx			= &ctx;
 	
 	/* MQTT Client Init */
-	MQTTClient client;
-    global_client = &client;
+	MQTTClient 							client;
+    global_client 						= &client;
     MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-    int rc;
+    int rc 								= 0 ;
 
-    MQTTClient_create(&client, ADDRESS, CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL);
+    MQTTClient_create			(&client, ADDRESS, CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL);
     conn_opts.keepAliveInterval = 20;
-    conn_opts.cleansession = 1;
-
-    MQTTClient_setCallbacks(client, NULL, connlost, msgarrvd, delivered);
+    conn_opts.cleansession 		= 1;
+    MQTTClient_setCallbacks		(client, NULL, connlost, msgarrvd, delivered);
 
     if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS)
     {
@@ -784,35 +780,39 @@ int main(int argc, char* argv[])
 	/* MQTT Client Init */
 	
 	/* turn on debug an printf() */
-	coap_log_t log_level = LOG_DEBUG;
-	coap_set_log_level(log_level);
+	coap_log_t log_level 	= LOG_DEBUG;
+	coap_set_log_level		(log_level);
 	/* turn on debug an printf() */
 		
 	/* Prepare the CoAP server socket */ 
-	coap_address_init(&serv_addr);
-	serv_addr.addr.sin.sin_family      = AF_INET6;
-	serv_addr.addr.sin.sin_addr.s_addr = INADDR_ANY;
-	serv_addr.addr.sin.sin_port        = htons(5683); //default port
-	ctx                                = coap_new_context(&serv_addr);
-	if (!ctx) exit(EXIT_FAILURE);
+	coap_address_init					(&serv_addr);
+	serv_addr.addr.sin.sin_family		= AF_INET6;
+	serv_addr.addr.sin.sin_addr.s_addr	= INADDR_ANY;
+	serv_addr.addr.sin.sin_port			= htons(5683); //default port
+	ctx									= coap_new_context(&serv_addr);
+	if (!ctx) {
+		exit(EXIT_FAILURE);
+	}
 	/* Prepare the CoAP server socket */ 	
 	
 	/* Initialize the observable resource */
-	broker_resource = coap_resource_init(broker_path, strlen(broker_path), 0);
-	coap_register_handler(broker_resource, COAP_REQUEST_GET, hnd_get_broker);
-	coap_register_handler(broker_resource, COAP_REQUEST_POST, hnd_post_broker);
-	coap_register_handler(broker_resource, COAP_REQUEST_DELETE, hnd_delete_broker);
-	coap_add_attr(broker_resource, (unsigned char *)"ct", 2, (unsigned char *)"40", strlen("40"), 0); //40 :link
-	coap_add_attr(broker_resource, (unsigned char *)"rt", 2, (unsigned char *)"core.ps", strlen("core.ps"), 0);
-	coap_add_resource(ctx, broker_resource);
+	broker_resource 		= coap_resource_init(broker_path, strlen(broker_path), 0);
+	coap_register_handler	(broker_resource, COAP_REQUEST_GET, hnd_get_broker);
+	coap_register_handler	(broker_resource, COAP_REQUEST_POST, hnd_post_broker);
+	coap_register_handler	(broker_resource, COAP_REQUEST_DELETE, hnd_delete_broker);
+	coap_add_attr			(broker_resource, (unsigned char *)"ct", 2, (unsigned char *)"40", strlen("40"), 0); //40 :link
+	coap_add_attr			(broker_resource, (unsigned char *)"rt", 2, (unsigned char *)"core.ps", strlen("core.ps"), 0);
+	coap_add_resource		(ctx, broker_resource);
 	/* Initialize the observable resource */	
 	
+	/* Initialize CTRL+C Handler */	
+	signal(SIGINT, handleSIGINT);
+	/* Initialize CTRL+C Handler */
 	
-	signal(SIGINT, handle_sigint);
 	/*Listen for incoming connections*/	
 	while (!quit) {
         FD_ZERO(&readfds);
-        FD_SET( ctx->sockfd, &readfds );
+        FD_SET(ctx->sockfd, &readfds );
         /* Block until there is something to read from the socket */
         int result = select( FD_SETSIZE, &readfds, 0, 0, NULL );
         if ( result < 0 ) {         /* error */
@@ -822,18 +822,26 @@ int main(int argc, char* argv[])
             if ( FD_ISSET( ctx->sockfd, &readfds ) ) 
                 coap_read( ctx );       
         } 
-        //printDB(topicDB);
+        printDB(topicDB);
         //topicMaxAgeMonitor(topicDB);
-        
-        // coap_check_notify is needed if there is a observable resource
-        // either put here or in put handler
-        //coap_check_notify(ctx);
     }
     
-    coap_free_context(ctx);  
-	MQTTClient_disconnect(client, 10000);
-    MQTTClient_destroy(&client);
-    return rc;
+    /* clean-up */
+    debug("Exiting Main\n");
+    RESOURCES_ITER((*global_ctx)->resources, r) {
+		if(!compareString(r->uri.s, broker_path)){
+			deleteTopic(&topicDB, r->uri.s);
+			MQTTClient_unsubscribe(*global_client, r->uri.s);
+			RESOURCES_DELETE((*global_ctx)->resources, r);
+			coapFreeResource(r);
+		}
+	}	
+    coap_free_context		(ctx);  
+	MQTTClient_disconnect	(client, 10000);
+    MQTTClient_destroy		(&client);
+    /* clean-up */
+    
+    return 0;
 }
 
 static void
@@ -842,21 +850,62 @@ hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource,
               coap_pdu_t *request, str *token, coap_pdu_t *response) 
 {
 	unsigned char buf[3];
-	unsigned char response_data[1024];
+	unsigned char response_data[1024] = {0}; // initialized all elements to 0 //
 	size_t response_size = sizeof(response_data);
 	size_t response_offset = 0;
+	
+	/* to get max_age value and observe*/
+	if(request != NULL) { 
+		debug("Request is NOT NULL \n");		
+		coap_opt_t *option;
+		coap_opt_iterator_t counter_opt_iter; 
+		coap_opt_iterator_t value_opt_iter; 
+		coap_option_iterator_init(request, &counter_opt_iter, COAP_OPT_ALL); 
+		int counter = 0;
+		while ((option = coap_option_next(&counter_opt_iter))) {
+		   if (counter_opt_iter.type == COAP_OPTION_URI_QUERY) {  
+			   counter++;
+		   }
+		}	
+		coap_option_iterator_init(request, &value_opt_iter, COAP_OPT_ALL);
+		while ((option = coap_option_next(&value_opt_iter))) {
+		   if (value_opt_iter.type == COAP_OPTION_URI_QUERY) {  
+			   debug("(%.*s)\n", coap_opt_length(option), coap_opt_value(option));
+		   }
+		}
+		debug("Total Query : %d \n",counter);	
+	}
+	/* to get max_age value and observe*/
+	
 	RESOURCES_ITER(ctx->resources, r) {
-		response_size = sizeof(response_data);
-		response_offset = 0;
-		coap_print_link(r, response_data, &response_size, &response_offset);
+		debug("Resource URI : %s\n", r->uri.s);
+		if((strlen(r->uri.s) > 3)){
+			if(r->uri.s[0] == 'p' && r->uri.s[1] == 's' && r->uri.s[2] == '/'){
+				response_size = 11;
+				response_offset = 0;
+				coap_print_link(r, response_data, &response_size, &response_offset);
+				debug("Resource in Link Format : %s\n", response_data); 
+				
+				response_size = 5;
+				response_offset = 0;
+				response_data[response_size] = '\0';
+				coap_print_link(r, response_data, &response_size, &response_offset);
+				debug("Resource in Link Format : %s\n", response_data); 
+				
+				response_size = 6;
+				response_offset = 5;
+				response_data[response_size] = '\0';
+				coap_print_link(r, response_data, &response_size, &response_offset);
+				debug("Resource in Link Format : %s\n", response_data); 
+				
+			}
+		}
 	}
   
-
 	response->hdr->code 		  = COAP_RESPONSE_CODE(205); 
 	// option order matters!
 	coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
-	coap_add_option(response, COAP_OPTION_MAXAGE,coap_encode_var_bytes(buf, 20), buf); // max-age in seconds, so 30 seconds (to mars. #pun)
-	coap_add_data  (response, response_size, response_data);
+	//coap_add_data  (response, response_size, response_data);
 	//coap_add_data  (response, resource->uri.length, resource->uri.s);		
 }
 
@@ -867,73 +916,89 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 {
 
 	coap_resource_t *new_resource = NULL;
-	
-	/* parse payload */
+		
+	/* declare a safe variable for data */
 	size_t size;
     unsigned char *data;
     unsigned char *data_safe;
 	(void)coap_get_data(request, &size, &data);
 	data_safe = coap_malloc(sizeof(char)*(size+2));
 	snprintf(data_safe,size+1, "%s", data);
-	int ct_value_valid = 1;
-	//int status = 0;
+	/* declare a safe variable for data */
+	
+	/* parse payload */
 	int status = parseLinkFormat(data_safe,resource, &new_resource);
+	debug("Parser status : %d\n", status);
 	/* parse payload */
 	
+	/* free the safe variable for data */
 	coap_free(data_safe);
+	/* free the safe variable for data */
 	
-	/* to get max_age value */
+	/* Iterator to get max_age value */
+	time_t opt_topic_ma = 0;
+	time_t abs_topic_ma = 0;
+	int ma_opt_status = 0;
+
+	int ct_opt_status = 0;	
+	int ct_opt_val_integer = -1;
+
 	coap_opt_t *option;
 	coap_opt_iterator_t opt_iter; 
 	coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL);
-	unsigned char* max_age_val;
-	unsigned short max_age_len;	 
-	int rel_topic_ma;
-	int topic_ma_status = 0;
-	time_t topic_ma = 0;
-	
 	while ((option = coap_option_next(&opt_iter))) {
-		// changing COAP_OPTION_MAXAGE into any coap Option will return the selected option type
-	   if (opt_iter.type == COAP_OPTION_MAXAGE) { 
-				topic_ma_status = 1;
-				max_age_len = coap_opt_length(option);
-				max_age_val = malloc(sizeof(char) * (max_age_len+2));
-				snprintf(max_age_val, max_age_len +1, "%s", coap_opt_value(option));
-				rel_topic_ma = atoi(max_age_val);
-				free(max_age_val);
-				break;
+		
+		if (opt_iter.type == COAP_OPTION_CONTENT_TYPE && !ct_opt_status) { // !ct_opt_status means only take the first occurence of that option
+			ct_opt_status = 1;
+			ct_opt_val_integer =  coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option)); 
+		}
+		/* search for Max-Age Option field */
+	   if (opt_iter.type == COAP_OPTION_MAXAGE && !ma_opt_status) {
+			ma_opt_status = 1;  
+			/* decode Max-Age Option */
+			opt_topic_ma = coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option)); 
+				
+			/* if max-age must have a value of 1 or above 
+			 * if below 1 set topic max-age to 0 (infinite max-age )
+			 * else will set topic max-age to ( decode max-age + current time ) */
+			if(opt_topic_ma < 1) {  
+				abs_topic_ma = 0;
+			}
+			else{
+				abs_topic_ma = time(NULL) + opt_topic_ma;
+			}
 	   }
-	}
+	   if (ct_opt_status && ma_opt_status) { break;}
+	}	
+	debug("topic max-age : %ld\n",opt_topic_ma);
+	debug("topic abs max-age : %ld\n",abs_topic_ma);
+	/* Iterator to get max_age value */
 	
-	if(topic_ma_status){
-		if(rel_topic_ma < 1) { // if max-age input is 0 or below
-			topic_ma = 0;	// set topic_ma to 0, which means topic never expires
-		}
-		else{
-			topic_ma = time(NULL) + rel_topic_ma;
-		}
-	}
-	else{
-		topic_ma = 0;
-	}
-	printf("topic max-age : %d\n",rel_topic_ma);
-	printf("topic abs max-age : %ld\n",topic_ma);
-	/* to get max_age value*/
-	
-	printf("Parser status : %d", status);
+	if (ct_opt_val_integer != COAP_MEDIATYPE_APPLICATION_LINK_FORMAT){
+		debug("ct option is not link format\n"); 
+		coapFreeResource(new_resource);
+		status=0; /* jump to malformed request handler */
+	} 
 	
 	/* Unsupported content format for topic. */
 	if (status)	{
+		/* search for ct attribute in the new_resource created by parseLinkFormat*/
 		coap_attr_t* new_resource_attr = coap_find_attr(new_resource,(const unsigned char*) "ct", 2);
 		
+		/* if new_resource doesn't have ct attribute, jump to malformed request handler and free new_resource */
 		if(new_resource_attr == NULL){
-			printf("ct not found\n"); 
+			debug("ct attribute not found\n"); 
 			coapFreeResource(new_resource);
-			status=0; // malformed request indicator
+			status=0; /* jump to malformed request handler */
 		}
 		
+		/* if new_resource does have ct attribute, check ct attribute validity. jump to 
+		 * "Unsupported content format for topic" handler if ct isn't valid */
 		else {
 			int is_digit = 1;
+			int ct_value_valid = 1;
+			
+			/* check ct value, by using isdigit() and iterate to every char in new_resource ct attribute */
 			for(int i = 0; i < new_resource_attr->value.length;i++){
 				if (!isdigit(new_resource_attr->value.s[i])){
 					is_digit = 0;
@@ -944,37 +1009,40 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 			if(is_digit){
 				int ct_value = atoi(new_resource_attr->value.s);
 				if(ct_value < 0 || ct_value > 65535){ 
-					status = 0;
-					ct_value_valid = 0;	
+					ct_value_valid = 0;	/* jump to "Unsupported content format for topic" handler */
 				}
 			}
 			else { 
-				status = 0;
-				ct_value_valid = 0;	
-			}		
-		}	
-		
-		if ( !ct_value_valid ){
-			response->hdr->code = COAP_RESPONSE_CODE(406);
-			coapFreeResource(new_resource); 
-			return;
+				ct_value_valid = 0;	/* jump to "Unsupported content format for topic" handler */
+			}	
+			
+			/* "Unsupported content format for topic" handler */
+			if ( !ct_value_valid ){
+				response->hdr->code = COAP_RESPONSE_CODE(406);
+				coapFreeResource(new_resource); 
+				return;
+			}			
 		}	
 	}	
 	/* Unsupported content format for topic. */
 	
 	/* Topic already exists. */ 
+	
+	/* Iterate to every resource in coap ctx and compare 
+	 * iterated resource uri to new-resource. Jump to 
+	 * "Topic already exists" handler if both resource have the same uri */
 	if (status){
 		int found_resource = 0;
 		RESOURCES_ITER(ctx->resources, r) {
 			if(compareString(r->uri.s, new_resource->uri.s)){
-				found_resource = 1;
+				found_resource = 1; /* Jump to "Topic already exists" handler if both resource have the same uri */
 				break;
 			}
 		}
 		
-		
+		/* "Topic already exists" handler */
 		if(found_resource){
-			updateTopicInfo(&topicDB, new_resource->uri.s, topic_ma);
+			updateTopicInfo(&topicDB, new_resource->uri.s, abs_topic_ma);
 			coapFreeResource(new_resource);
 			response->hdr->code = COAP_RESPONSE_CODE(403); 
 			return ;
@@ -992,13 +1060,14 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 			new_resource->observable = 1;
 			coap_add_resource(ctx, new_resource);
 			coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
-			addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, topic_ma);
+			addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, abs_topic_ma);
 			response->hdr->code = COAP_RESPONSE_CODE(201) ;
 			return ; 
 	}
 	/* Successful Creation of the topic */
 	
 	/* malformed request */
+	/* don't need to free new_resource. Any error will be handle and freed in parseLinkFormat() */
 	if (!status){
 		response->hdr->code = COAP_RESPONSE_CODE(400);
 		return ; 
@@ -1014,28 +1083,27 @@ static void hnd_delete_broker(coap_context_t *ctx,
              str *token,
              coap_pdu_t *response){
 				 
-	handle_sigint(0);
+	quit = 1;
 }
 static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource, 
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
               coap_pdu_t *request, str *token, coap_pdu_t *response){
 					
 		unsigned char buf[3];
-		int status = 0;
-		coap_attr_t* ct_attr;
-		int ct_attr_value;
-		int is_observer_response_pdu = 0;
-		int is_get_observer_response_pdu = 0;
+		int status = 0; 
+		int is_observe_notification_response = 0;
+		int is_observe_registration_request = 0;
+		int ct_attr_value = atoi((coap_find_attr(resource,(const unsigned char*) "ct", 2))->value.s);
+		
 		/* to get max_age value and observe*/
-		unsigned int ct_opt_val_integer;
+		unsigned int ct_opt_val_integer = -1;
 		int ct_opt_status = 0;
 			
-		unsigned int obs_opt_val_integer;
+		unsigned int obs_opt_val_integer = -1;
 		int obs_opt_status = 0;
+		
 		if(request != NULL) { 
-		
-			printf("Request is NULL \n");
-		
+			debug("Request is NOT NULL \n");		
 			coap_opt_t *option;
 			coap_opt_iterator_t opt_iter; 
 			coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL); 
@@ -1043,33 +1111,39 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 			while ((option = coap_option_next(&opt_iter))) {
 			   if (opt_iter.type == COAP_OPTION_CONTENT_TYPE && !ct_opt_status) { // !ct_opt_status means only take the first occurence of that option
 						ct_opt_status = 1;
-						ct_opt_val_integer =  coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option));
-						//break;
+						ct_opt_val_integer =  coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option)); 
 			   }
 			   if (opt_iter.type == COAP_OPTION_OBSERVE && !obs_opt_status ) { // !obs_opt_status means only take the first occurence of that option
 						obs_opt_status = 1;
 						obs_opt_val_integer =  coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option));
-						printf("Observe GET value : %d\n", obs_opt_val_integer);
-						//break;
+						debug("Observe GET value : %d\n", obs_opt_val_integer); 
 			   }
+			   if (ct_opt_status && obs_opt_status) { break;}
 			}	
 		}
 		/* to get max_age value and observe*/
 		
-		if (coap_find_observer(resource, peer, token) && !obs_opt_status){is_observer_response_pdu = 1;}
-		if (coap_find_observer(resource, peer, token) && obs_opt_status){is_get_observer_response_pdu = 1;}
+		if (coap_find_observer(resource, peer, token) && request == NULL){
+			is_observe_notification_response = 1;
+			debug("This is a Subscriber Notification Response \n");
+		}
+		else if (coap_find_observer(resource, peer, token) && request != NULL && obs_opt_val_integer == 0){
+			is_observe_registration_request = 1;
+			debug("This is a Subscriber Registration Request \n");
+		}
+		else{ 
+			debug("This is a READ Request \n");
+		}
 		
 		/* Unsupported Content Format */
-		if ((ct_opt_status || (ct_opt_status && is_get_observer_response_pdu)) && !is_observer_response_pdu){
-			ct_attr = coap_find_attr(resource,(const unsigned char*) "ct", 2);
-			ct_attr_value = atoi(ct_attr->value.s);
+		if ((ct_opt_status || (ct_opt_status && is_observe_registration_request)) && !is_observe_notification_response){
+			
 			if (ct_attr_value == ct_opt_val_integer){ 
 				status = 1; 
 			}		
 			else{
-				status = 0; 
-				printf("requested ct : %d\n", ct_opt_val_integer);
-				printf("available ct : %d\n", ct_attr_value);
+				debug("requested ct : %d\n", ct_opt_val_integer);
+				debug("available ct : %d\n", ct_attr_value);
 				response->hdr->code 	= COAP_RESPONSE_CODE(415);
 				return;
 			}	
@@ -1077,14 +1151,14 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 		/* Unsupported Content Format */
 		
 		/* Bad Request */
-		else if((!ct_opt_status || (!ct_opt_status && is_get_observer_response_pdu)) && !is_observer_response_pdu){
+		else if((!ct_opt_status || (!ct_opt_status && is_observe_registration_request)) && !is_observe_notification_response){
 			response->hdr->code 	= COAP_RESPONSE_CODE(400);
 			return;
 		}
 		/* Bad Request */
 		
 		TopicDataPtr temp = getTopic(&topicDB, resource->uri.s);
-		// It should never have this condition, ever. Just in Case. //
+		/* It should never have this condition, ever. Just in Case. */
 		/* Not Found */
 		if (temp == NULL ) {
 				response->hdr->code 	= COAP_RESPONSE_CODE(404);
@@ -1092,13 +1166,14 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 		}
 		/* Not Found */
 		
-		if(status || is_observer_response_pdu){
+		if(status || is_observe_notification_response){
 			
 			/* No Content */
 			if (temp->data == NULL){
 				if (coap_find_observer(resource, peer, token)) {
 					coap_add_option(response, COAP_OPTION_OBSERVE, coap_encode_var_bytes(buf, ctx->observe), buf);
 				}
+				coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, ct_attr_value), buf);
 				response->hdr->code 	= COAP_RESPONSE_CODE(204);
 				return;
 			}
@@ -1111,6 +1186,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 				}		
 				time_t remaining_maxage_time = temp->data_ma - time(NULL);
 				if (remaining_maxage_time < 0 && !(temp->data_ma == 0)){
+					coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, ct_attr_value), buf);
 					response->hdr->code 	= COAP_RESPONSE_CODE(204);
 					return;
 				}
@@ -1142,35 +1218,67 @@ static void hnd_put_topic(coap_context_t *ctx ,
 	size_t size;
     unsigned char *data; 
 	(void)coap_get_data(request, &size, &data);
-	/* to get max_age value */
+	int ma_opt_status = 0;	// I think ma_opt_status is un-necessary. Just in case. //
+	int ct_opt_status = 0;
+	int status = 0;
+	
+	/* to get max_age and ct value */
 	coap_opt_t *option;
 	coap_opt_iterator_t opt_iter; 
-	coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL); 
-	unsigned char* safe_ma_opt_val;
-	unsigned char* ma_opt_val;
-	unsigned short ma_opt_len;
+	coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL);  
+	unsigned int ct_opt_val_integer = 0;
 	unsigned int ma_opt_val_integer = 0;
-	time_t ma_opt_val_time_t = 0;
+	time_t		 ma_opt_val_time_t 	= 0;
 		
 	while ((option = coap_option_next(&opt_iter))) {
-	   if (opt_iter.type == COAP_OPTION_MAXAGE) { 
-				ma_opt_val = coap_opt_value(option);
-				ma_opt_len = coap_opt_length(option);
-				safe_ma_opt_val = malloc(sizeof(char) * (ma_opt_len+2));
-				snprintf(safe_ma_opt_val, ma_opt_len+1,"%s",ma_opt_val);
-				ma_opt_val_integer = atoi(safe_ma_opt_val);
-				ma_opt_val_time_t = ma_opt_val_integer + time(NULL);
-				free(safe_ma_opt_val);
-				printf("Option Max-age   : %s\n",safe_ma_opt_val);
-				break;
+	   if (opt_iter.type == COAP_OPTION_MAXAGE && !ma_opt_status) { 
+				ma_opt_status = 1;
+				ma_opt_val_integer = coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option)); 
+				ma_opt_val_time_t = ma_opt_val_integer + time(NULL); 
+	   }
+	   if (opt_iter.type == COAP_OPTION_CONTENT_TYPE && !ct_opt_status) { 
+				ct_opt_status = 1;
+				ct_opt_val_integer = coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option));  
 	   }
 	}
+	/* to get max_age and ct value */
 	
-	printf("Option Max-age   : %d\n",ma_opt_val_integer);
-	printf("Absolute Max-age : %ld\n",ma_opt_val_time_t);
-	/* to get max_age value*/
-	int status = updateTopicData(&topicDB, resource->uri.s, ma_opt_val_time_t, data, size);
-	if (status){
+	/* to print max_age value*/
+	debug("Option Max-age   : %d\n",ma_opt_val_integer);
+	debug("Absolute Max-age : %ld\n",ma_opt_val_time_t);
+	/* to print max_age value*/
+	
+	/* Unsupported Content Format */
+	if (ct_opt_status && (ma_opt_val_integer >= 0)){ // make sure max-age is above 0 //
+		coap_attr_t* ct_attr = coap_find_attr(resource,(const unsigned char*) "ct", 2);
+		int ct_attr_value = atoi(ct_attr->value.s);
+		
+		debug("requested ct : %d\n", ct_opt_val_integer);
+		debug("available ct : %d\n", ct_attr_value);
+		
+		if (ct_attr_value != ct_opt_val_integer){ 
+			response->hdr->code 	= COAP_RESPONSE_CODE(415);
+			return;
+		}	
+	}
+	/* Unsupported Content Format */
+	
+	/* Bad Request */
+	else {
+		response->hdr->code 	= COAP_RESPONSE_CODE(400);
+		return;
+	}
+	/* Bad Request */
+	
+	TopicDataPtr temp = getTopic(&topicDB, resource->uri.s);
+	/* Not Found */ // It should never have this condition, ever. Just in Case. //
+	if (temp == NULL ) {
+		response->hdr->code 	= COAP_RESPONSE_CODE(404);
+		return;
+	}
+	/* Not Found */
+	
+	if (updateTopicData(&topicDB, resource->uri.s, ma_opt_val_time_t, data, size)){
 		MQTTClient_message pubmsg = MQTTClient_message_initializer;
 		MQTTClient_deliveryToken token;
 		pubmsg.payload = data;
@@ -1179,16 +1287,12 @@ static void hnd_put_topic(coap_context_t *ctx ,
 		pubmsg.retained = 0;
 		deliveredtoken = 0;
 		MQTTClient_publishMessage(*global_client, resource->uri.s, &pubmsg, &token);
-		printf("Waiting for publication of %s\n"
-            "on topic %s for client with ClientID: %s\n",
-        data, resource->uri.s, CLIENTID);
+		debug("Waiting for publication of %s on topic %s for client with ClientID: %s\n", data, resource->uri.s, CLIENTID); // printing unsafe data //
 		resource->dirty = 1;
-		/* this can be changed to coap_notify_observers, but coap_notify_observers is static. so either
-		* create a similir function or change resource.c 
-		*/
 		coap_check_notify(ctx);
-	}
-	response->hdr->code = status ? COAP_RESPONSE_CODE(201) : COAP_RESPONSE_CODE(400);
+		response->hdr->code = COAP_RESPONSE_CODE(204); 
+		return;
+	} 
 }
 
 static void hnd_delete_topic(coap_context_t *ctx ,
@@ -1253,74 +1357,90 @@ static void hnd_post_topic(coap_context_t *ctx ,
                 coap_pdu_t *request ,
                 str *token ,
                 coap_pdu_t *response ){
-coap_resource_t *new_resource = NULL;
-	
-	/* parse payload */
+	coap_resource_t *new_resource = NULL;
+		
+	/* declare a safe variable for data */
 	size_t size;
     unsigned char *data;
     unsigned char *data_safe;
 	(void)coap_get_data(request, &size, &data);
 	data_safe = coap_malloc(sizeof(char)*(size+2));
 	snprintf(data_safe,size+1, "%s", data);
-	int ct_value_valid = 1;
-	//int status = 0;
+	/* declare a safe variable for data */
+	
+	/* parse payload */
 	int status = parseLinkFormat(data_safe,resource, &new_resource);
+	debug("Parser status : %d\n", status);
 	/* parse payload */
 	
+	/* free the safe variable for data */
 	coap_free(data_safe);
+	/* free the safe variable for data */
 	
-	/* to get max_age value */
+	/* Iterator to get max_age value */
+	time_t opt_topic_ma = 0;
+	time_t abs_topic_ma = 0;
+	int ma_opt_status = 0;
+
+	int ct_opt_status = 0;	
+	int ct_opt_val_integer = -1;
+
 	coap_opt_t *option;
 	coap_opt_iterator_t opt_iter; 
 	coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL);
-	unsigned char* max_age_val;
-	unsigned short max_age_len;	 
-	int rel_topic_ma;
-	int topic_ma_status = 0;
-	time_t topic_ma = 0;
-	
 	while ((option = coap_option_next(&opt_iter))) {
-		// changing COAP_OPTION_MAXAGE into any coap Option will return the selected option type
-	   if (opt_iter.type == COAP_OPTION_MAXAGE) { 
-				topic_ma_status = 1;
-				max_age_len = coap_opt_length(option);
-				max_age_val = malloc(sizeof(char) * (max_age_len+2));
-				snprintf(max_age_val, max_age_len +1, "%s", coap_opt_value(option));
-				rel_topic_ma = atoi(max_age_val);
-				free(max_age_val);
-				break;
+		
+		if (opt_iter.type == COAP_OPTION_CONTENT_TYPE && !ct_opt_status) { // !ct_opt_status means only take the first occurence of that option
+			ct_opt_status = 1;
+			ct_opt_val_integer =  coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option)); 
+		}
+		/* search for Max-Age Option field */
+	   if (opt_iter.type == COAP_OPTION_MAXAGE && !ma_opt_status) {
+			ma_opt_status = 1;  
+			/* decode Max-Age Option */
+			opt_topic_ma = coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option)); 
+				
+			/* if max-age must have a value of 1 or above 
+			 * if below 1 set topic max-age to 0 (infinite max-age )
+			 * else will set topic max-age to ( decode max-age + current time ) */
+			if(opt_topic_ma < 1) {  
+				abs_topic_ma = 0;
+			}
+			else{
+				abs_topic_ma = time(NULL) + opt_topic_ma;
+			}
 	   }
-	}
+	   if (ct_opt_status && ma_opt_status) { break;}
+	}	
+	debug("topic max-age : %ld\n",opt_topic_ma);
+	debug("topic abs max-age : %ld\n",abs_topic_ma);
+	/* Iterator to get max_age value */
 	
-	if(topic_ma_status){
-		if(rel_topic_ma < 1) { // if max-age input is 0 or below
-			topic_ma = 0;	// set topic_ma to 0, which means topic never expires
-		}
-		else{
-			topic_ma = time(NULL) + rel_topic_ma;
-		}
-	}
-	else{
-		topic_ma = 0;
-	}
-	printf("topic max-age : %d\n",rel_topic_ma);
-	printf("topic abs max-age : %ld\n",topic_ma);
-	/* to get max_age value*/
-	
-	printf("Parser status : %d", status);
+	if (ct_opt_val_integer != COAP_MEDIATYPE_APPLICATION_LINK_FORMAT){
+		debug("ct option is not link format\n"); 
+		coapFreeResource(new_resource);
+		status=0; /* jump to malformed request handler */
+	} 
 	
 	/* Unsupported content format for topic. */
 	if (status)	{
+		/* search for ct attribute in the new_resource created by parseLinkFormat*/
 		coap_attr_t* new_resource_attr = coap_find_attr(new_resource,(const unsigned char*) "ct", 2);
 		
+		/* if new_resource doesn't have ct attribute, jump to malformed request handler and free new_resource */
 		if(new_resource_attr == NULL){
-			printf("ct not found\n"); 
+			debug("ct attribute not found\n"); 
 			coapFreeResource(new_resource);
-			status=0; // malformed request indicator
+			status=0; /* jump to malformed request handler */
 		}
 		
+		/* if new_resource does have ct attribute, check ct attribute validity. jump to 
+		 * "Unsupported content format for topic" handler if ct isn't valid */
 		else {
 			int is_digit = 1;
+			int ct_value_valid = 1;
+			
+			/* check ct value, by using isdigit() and iterate to every char in new_resource ct attribute */
 			for(int i = 0; i < new_resource_attr->value.length;i++){
 				if (!isdigit(new_resource_attr->value.s[i])){
 					is_digit = 0;
@@ -1331,37 +1451,40 @@ coap_resource_t *new_resource = NULL;
 			if(is_digit){
 				int ct_value = atoi(new_resource_attr->value.s);
 				if(ct_value < 0 || ct_value > 65535){ 
-					status = 0;
-					ct_value_valid = 0;	
+					ct_value_valid = 0;	/* jump to "Unsupported content format for topic" handler */
 				}
 			}
 			else { 
-				status = 0;
-				ct_value_valid = 0;	
-			}		
-		}	
-		
-		if ( !ct_value_valid ){
-			response->hdr->code = COAP_RESPONSE_CODE(406);
-			coapFreeResource(new_resource); 
-			return;
+				ct_value_valid = 0;	/* jump to "Unsupported content format for topic" handler */
+			}	
+			
+			/* "Unsupported content format for topic" handler */
+			if ( !ct_value_valid ){
+				response->hdr->code = COAP_RESPONSE_CODE(406);
+				coapFreeResource(new_resource); 
+				return;
+			}			
 		}	
 	}	
 	/* Unsupported content format for topic. */
 	
 	/* Topic already exists. */ 
+	
+	/* Iterate to every resource in coap ctx and compare 
+	 * iterated resource uri to new-resource. Jump to 
+	 * "Topic already exists" handler if both resource have the same uri */
 	if (status){
 		int found_resource = 0;
 		RESOURCES_ITER(ctx->resources, r) {
 			if(compareString(r->uri.s, new_resource->uri.s)){
-				found_resource = 1;
+				found_resource = 1; /* Jump to "Topic already exists" handler if both resource have the same uri */
 				break;
 			}
 		}
 		
-		
+		/* "Topic already exists" handler */
 		if(found_resource){
-			updateTopicInfo(&topicDB, new_resource->uri.s, topic_ma);
+			updateTopicInfo(&topicDB, new_resource->uri.s, abs_topic_ma);
 			coapFreeResource(new_resource);
 			response->hdr->code = COAP_RESPONSE_CODE(403); 
 			return ;
@@ -1379,13 +1502,14 @@ coap_resource_t *new_resource = NULL;
 			new_resource->observable = 1;
 			coap_add_resource(ctx, new_resource);
 			coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
-			addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, topic_ma);
+			addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, abs_topic_ma);
 			response->hdr->code = COAP_RESPONSE_CODE(201) ;
 			return ; 
 	}
 	/* Successful Creation of the topic */
 	
 	/* malformed request */
+	/* don't need to free new_resource. Any error will be handle and freed in parseLinkFormat() */
 	if (!status){
 		response->hdr->code = COAP_RESPONSE_CODE(400);
 		return ; 
