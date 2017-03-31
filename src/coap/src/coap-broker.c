@@ -25,6 +25,7 @@
 #define LIBCOAP_MOD
 #define GLOBAL_DATA
 #define MQTT_CLIENT
+#define RESOURCE_LF
  
 // re-commit for notes on changes 
  
@@ -379,6 +380,30 @@ void cleanDB( TopicDataPtr *sPtr )
 
 #endif
 
+#ifdef RESOURCE_LF
+
+int calculateResourceLF(coap_resource_t* resource){
+	if(resource != NULL){
+		int lf_size = 0;
+		/* </ uri > . added additional 3 char of <,/, and > */ 
+		lf_size += resource->uri.length + 3;
+		 
+		coap_attr_t *attr; 
+		LL_FOREACH(resource->link_attr, attr) {
+			debug("Attr of %s with value of %s\n", attr->name.s, attr->value.s);
+			/* ; name = value . added 2 additional char of ; and = */ 
+			lf_size += (attr->name.length) + (attr->value.length) + 2;
+		}
+		if (resource->observable){
+			/* if observable add 4 char of ";obs" */
+			lf_size += 4;
+		}
+		return lf_size;
+	}
+}
+
+
+#endif
 #ifdef LF_PARSER
 /* restrict doesn't work properly*/
 #define RESTRICT_CHAR
@@ -844,67 +869,238 @@ int main(int argc, char* argv[])
     return 0;
 }
 
+int parseOptionURIQuery(char* option_value, unsigned short option_length, char** query_name, char** query_value){
+	char* temp_uri_query = malloc(sizeof(char) * (option_length+2));
+	snprintf(temp_uri_query, option_length+1, "%s", option_value);
+	
+	int name_size, value_size;
+	int upper_status = calOptionSize(temp_uri_query,&name_size, &value_size);
+	if (upper_status && name_size > 0 && value_size > 0){
+		*query_name = malloc(sizeof(char) * (name_size+1));
+		*query_value = malloc(sizeof(char) * (value_size+1));
+		int status = parseOption(temp_uri_query, *query_name, *query_value);
+		if(status){
+			free(temp_uri_query);
+			return 1;
+		}
+		
+		else{
+			free(temp_uri_query);
+			return 0;
+		}
+	}
+	
+	else {
+		free(temp_uri_query);
+		return -1;
+	}
+}
+
+void dynamicConcatenate(char **str, char *str2) {
+    char *tmp = NULL;
+
+    // Reset *str
+    if ( *str != NULL && str2 == NULL ) {
+        free(*str);
+        *str = NULL;
+        return;
+    }
+
+	if ( str2 == NULL ) {
+		printf("Error Source Empty\n");
+        return;
+    }
+
+    // Initial copy
+    if (*str == NULL) {
+        *str = malloc( (strlen(str2)+1) * sizeof(char) );
+        strcpy(*str, str2);
+    }
+    else { // Append
+        tmp = malloc ( (strlen(*str)+1 )* sizeof(char) );
+        strcpy(tmp, *str);
+        *str = (char *) realloc((*str) ,  (strlen(*str)+strlen(str2)+1) * sizeof(char) );
+        sprintf(*str, "%s%s", tmp, str2);
+        free(tmp);
+    }
+
+} 
+
 static void
 hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource, 
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
               coap_pdu_t *request, str *token, coap_pdu_t *response) 
 {
-	unsigned char buf[3];
-	unsigned char response_data[1024] = {0}; // initialized all elements to 0 //
-	size_t response_size = sizeof(response_data);
-	size_t response_offset = 0;
+	/*
+	FILE *file  = fopen("test.txt", "r");
+	char buff[8192];
+	int fcounter = 0;
+	int c;
 	
-	/* to get max_age value and observe*/
-	if(request != NULL) { 
-		debug("Request is NOT NULL \n");		
-		coap_opt_t *option;
-		coap_opt_iterator_t counter_opt_iter; 
-		coap_opt_iterator_t value_opt_iter; 
-		coap_option_iterator_init(request, &counter_opt_iter, COAP_OPT_ALL); 
-		int counter = 0;
-		while ((option = coap_option_next(&counter_opt_iter))) {
-		   if (counter_opt_iter.type == COAP_OPTION_URI_QUERY) {  
-			   counter++;
-		   }
-		}	
-		coap_option_iterator_init(request, &value_opt_iter, COAP_OPT_ALL);
-		while ((option = coap_option_next(&value_opt_iter))) {
-		   if (value_opt_iter.type == COAP_OPTION_URI_QUERY) {  
-			   debug("(%.*s)\n", coap_opt_length(option), coap_opt_value(option));
-		   }
+	if (file) {
+		while ((c = getc(file)) != EOF){
+			buff[fcounter] = c;
+			fcounter++;
+			if(fcounter > 8192) fcounter = 0;
 		}
-		debug("Total Query : %d \n",counter);	
+		buff[fcounter] = '\0';
+		fclose(file);
 	}
+	else{
+		debug("error opening file\n");
+	}
+	debug("%s\n", buff);
+
+	unsigned char buf[2];
+	coap_block_t block;
+	response->hdr->code = COAP_RESPONSE_CODE(205);
+	
+	coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_APPLICATION_LINK_FORMAT), buf);
+ 	  
+	if (request) {
+		int res;
+
+		if (coap_get_block(request, COAP_OPTION_BLOCK2, &block)) {
+			res = coap_write_block_opt(&block, COAP_OPTION_BLOCK2, response, strlen(buff));
+
+			switch (res) {
+				case -2:			 
+				response->hdr->code = COAP_RESPONSE_CODE(400);
+				goto error;
+				case -1:			 
+				assert(0);
+				 
+				case -3:			 
+				response->hdr->code = COAP_RESPONSE_CODE(500);
+				goto error;
+				default:			 
+				;
+			}
+		  
+			coap_add_block(response, strlen(buff), buff, block.num, block.szx);
+		} 
+		
+		else {
+			if (!coap_add_data(response, strlen(buff), buff)) { 
+				block.szx = 6;
+				coap_write_block_opt(&block, COAP_OPTION_BLOCK2, response,strlen(buff));
+			
+				coap_add_block(response, strlen(buff), buff,block.num, block.szx);	
+			}
+		}    
+	} 
+	else {		       
+	}	  
+	return;
+	
+	error:		
+	coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
+	return;
+	*/
+	
+	unsigned char buf[3];
+	int resource_loop_status = 1;
+	int requested_lf_size = 0;
+	int requested_lf_counter = 0;
+	char* requested_link_format = NULL;
+	
+	/* to get max_age value and observe*/ 
+	coap_opt_t *option;
+	coap_opt_iterator_t counter_opt_iter; 
+	coap_option_iterator_init(request, &counter_opt_iter, COAP_OPT_ALL); 
+	int counter = 0;
+		while ((option = coap_option_next(&counter_opt_iter))) {
+	   if (counter_opt_iter.type == COAP_OPTION_URI_QUERY) {  
+		   counter++;
+	   }
+	}	
+	debug("Total Query : %d \n",counter);
 	/* to get max_age value and observe*/
+	
 	
 	RESOURCES_ITER(ctx->resources, r) {
-		debug("Resource URI : %s\n", r->uri.s);
 		if((strlen(r->uri.s) > 3)){
 			if(r->uri.s[0] == 'p' && r->uri.s[1] == 's' && r->uri.s[2] == '/'){
-				response_size = 11;
-				response_offset = 0;
-				coap_print_link(r, response_data, &response_size, &response_offset);
-				debug("Resource in Link Format : %s\n", response_data); 
 				
-				response_size = 5;
-				response_offset = 0;
-				response_data[response_size] = '\0';
-				coap_print_link(r, response_data, &response_size, &response_offset);
-				debug("Resource in Link Format : %s\n", response_data); 
+				int inner_counter = 0;	
+				coap_opt_iterator_t value_opt_iter; 
+				coap_option_iterator_init(request, &value_opt_iter, COAP_OPT_ALL);
+				while ((option = coap_option_next(&value_opt_iter))) {
+				   if (value_opt_iter.type == COAP_OPTION_URI_QUERY) {
+					   char* query_name;
+					   char* query_value;
+					   int status = parseOptionURIQuery(coap_opt_value(option), coap_opt_length(option), &query_name, &query_value);
+					   if (status == 1){
+							coap_attr_t* temp_attr = coap_find_attr(r, query_name, strlen(query_name));
+							if(temp_attr != NULL){
+								if(compareString(temp_attr->value.s, query_value)){
+									debug("%s attribute Match with value of %s in %s\n",query_name, query_value, r->uri.s);
+									inner_counter++;
+								}
+								else{
+									debug("%s attribute Found but not Match in %s\n",query_name, r->uri.s);
+								}
+							}
+							else{
+								debug("%s Attribute Not Found in %s\n",query_name, r->uri.s);
+							}
+					   }
+					   
+					   if(status != -1) {
+						   free(query_name);
+						   free(query_value);
+					   }
+					   
+					   if(status != 1) {
+						   debug("Malformed Request\n");
+						   resource_loop_status = 0;
+						   break;
+					   }
+				   }
+				}
 				
-				response_size = 6;
-				response_offset = 5;
-				response_data[response_size] = '\0';
-				coap_print_link(r, response_data, &response_size, &response_offset);
-				debug("Resource in Link Format : %s\n", response_data); 
+				if(counter == inner_counter){
+					/* every matching resource will be concat to the master string here */
+					size_t link_format_size = calculateResourceLF(r);
+					size_t response_size = link_format_size;
+					size_t response_offset = 0;
+					char response_data[link_format_size+1]; 
+					response_data[link_format_size] = '\0';
+					coap_print_link(r, response_data, &response_size, &response_offset);
+					debug("Resource in Link Format : %s\n", response_data);
+					debug("Link Format size : %ld\n", link_format_size);
+					debug("Found Matching Resource with requested URI Query : %s\n", r->uri.s);
+					requested_lf_size += link_format_size;
+					requested_lf_counter++;
+					
+					if(requested_lf_counter == 1){
+						dynamicConcatenate(&requested_link_format, response_data);
+					}
+					else {
+						dynamicConcatenate(&requested_link_format,",");
+						dynamicConcatenate(&requested_link_format, response_data);
+					}
+				}
 				
 			}
 		}
+		if(!resource_loop_status){break;}
 	}
-  
+	
+	if(!resource_loop_status){
+	
+		response->hdr->code 		  = COAP_RESPONSE_CODE(400);
+		return; 
+	}
 	response->hdr->code 		  = COAP_RESPONSE_CODE(205); 
 	// option order matters!
-	coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_TEXT_PLAIN), buf);
+	coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_APPLICATION_LINK_FORMAT), buf);
+	
+	debug("Requested Link Format 	 		: %s\n", requested_link_format);
+	debug("Requested Link Format size 		: %ld\n", requested_lf_size);
+	debug("Total Printed Link Format size 	: %ld\n", requested_lf_size+(requested_lf_counter-1));
+	debug("Total Requested Resource  		: %ld\n", requested_lf_counter);
+	free(requested_link_format);
 	//coap_add_data  (response, response_size, response_data);
 	//coap_add_data  (response, resource->uri.length, resource->uri.s);		
 }
