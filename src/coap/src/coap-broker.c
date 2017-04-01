@@ -1,4 +1,3 @@
-#include <coap.h> 
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -26,8 +25,9 @@
 #define GLOBAL_DATA
 #define MQTT_CLIENT
 #define RESOURCE_LF
- 
-// re-commit for notes on changes 
+#define OTHER_FUNCTION
+
+#include <coap.h> 
  
 #ifdef LIBCOAP_MOD
 void coapDeleteAttr(coap_attr_t *attr) {
@@ -87,6 +87,7 @@ int			addTopicWEC(TopicDataPtr *sPtr,
 					char* path, size_t path_size,
 					time_t topic_ma);
 int 		deleteTopic( TopicDataPtr *sPtr, char* path );					
+int 		deleteTopicData( TopicDataPtr *sPtr, char* path );					
 int			updateTopicInfo(TopicDataPtr *sPtr,
 					char* path, time_t topic_ma);
 					
@@ -294,6 +295,20 @@ int deleteTopic( TopicDataPtr *sPtr, char* path)
     return 0;
 
 } /* end function delete */
+
+int deleteTopicData( TopicDataPtr *sPtr, char* path)
+{ 
+	
+	TopicDataPtr topic = getTopic(sPtr, path);
+	if (topic != NULL){
+		free( topic->data );
+		topic->data			= NULL;
+		return 1;
+	}
+	
+    return 0;
+
+} 
 
 int updateTopicInfo(TopicDataPtr *sPtr,
 					char* path, time_t topic_ma){
@@ -644,42 +659,104 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 		MQTTClient_destroy(global_client);
 		exit(0);
 	}
+#endif
+
+#ifdef OTHER_FUNCTION
+int parseOptionURIQuery(char* option_value, unsigned short option_length, char** query_name, char** query_value){
+	char* temp_uri_query = malloc(sizeof(char) * (option_length+2));
+	snprintf(temp_uri_query, option_length+1, "%s", option_value);
 	
-	void topicMaxAgeMonitor( TopicDataPtr currentPtr ){
- 
-		/* if list is empty */
-		if ( currentPtr == NULL ) {
-			printf( "List is empty.\n\n" );
-		} /* end if */
-		else { 
-			printf( "The list is:\n" );
-
-			/* while not the end of the list */
-			while ( currentPtr != NULL ) { 
-				
-				printf( "%s\t\t%ld\t%ld | %s\n ",currentPtr->path, currentPtr->topic_ma, time(NULL), currentPtr->topic_ma < time(NULL) && currentPtr->topic_ma != 0? "Expired. Deleting..." : "Valid");
-				if (currentPtr->topic_ma < time(NULL) && currentPtr->topic_ma != 0){
-					char* deleted_uri_topic = malloc(sizeof(char) *(strlen(currentPtr->path)+2));
-					sprintf(deleted_uri_topic, "%s", currentPtr->path);
-					RESOURCES_ITER((*global_ctx)->resources, r) {
-						if (compareString(r->uri.s, deleted_uri_topic)){
-							if (deleteTopic(&topicDB, r->uri.s)){
-								MQTTClient_unsubscribe(*global_client, r->uri.s);
-								RESOURCES_DELETE((*global_ctx)->resources, r);
-								coapFreeResource(r);
-								break;
-							} 
-						}
-					}
-					free(deleted_uri_topic);
-				}
-				
-				currentPtr = currentPtr->nextPtr;   
-			} /* end while */
-
-			printf( "NULL\n\n" );
-		} /* end else */ 
+	int name_size, value_size;
+	int upper_status = calOptionSize(temp_uri_query,&name_size, &value_size);
+	if (upper_status && name_size > 0 && value_size > 0){
+		*query_name = malloc(sizeof(char) * (name_size+1));
+		*query_value = malloc(sizeof(char) * (value_size+1));
+		int status = parseOption(temp_uri_query, *query_name, *query_value);
+		if(status){
+			free(temp_uri_query);
+			return 1;
+		}
+		
+		else{
+			free(temp_uri_query);
+			return 0;
+		}
 	}
+	
+	else {
+		free(temp_uri_query);
+		return -1;
+	}
+}
+
+void dynamicConcatenate(char **str, char *str2) {
+    char *tmp = NULL;
+
+    // Reset *str
+    if ( *str != NULL && str2 == NULL ) {
+        free(*str);
+        *str = NULL;
+        return;
+    }
+
+	if ( str2 == NULL ) {
+		printf("Error Source Empty\n");
+        return;
+    }
+
+    // Initial copy
+    if (*str == NULL) {
+        *str = malloc( (strlen(str2)+1) * sizeof(char) );
+        strcpy(*str, str2);
+    }
+    else { // Append
+        tmp = malloc ( (strlen(*str)+1 )* sizeof(char) );
+        strcpy(tmp, *str);
+        *str = (char *) realloc((*str) ,  (strlen(*str)+strlen(str2)+1) * sizeof(char) );
+        sprintf(*str, "%s%s", tmp, str2);
+        free(tmp);
+    }
+
+} 
+	
+void topicMonitor( TopicDataPtr currentPtr ){
+
+	/* if list is empty */
+	if ( currentPtr == NULL ) {
+		printf( "List is empty.\n\n" );
+	} /* end if */
+	else {  
+			/* while not the end of the list */
+		while ( currentPtr != NULL ) { 
+			size_t currrent_time = time(NULL);
+			debug( "%s\t\t%ld\t%ld | %s\n ",currentPtr->path, currentPtr->topic_ma, currrent_time, currentPtr->topic_ma < currrent_time && currentPtr->topic_ma != 0? "Topic Expired. Deleting..." : "Topic Valid");
+			
+			debug( "%s\t\t%ld\t%ld | %s\n ",currentPtr->path, currentPtr->data_ma, currrent_time, currentPtr->data_ma < currrent_time && currentPtr->data_ma != 0? "Data Expired. Deleting..." : "Data Valid");
+			
+			if(currentPtr->data_ma < currrent_time && currentPtr->data_ma != 0){
+				deleteTopicData(&topicDB, currentPtr->path);
+			}
+			
+			if (currentPtr->topic_ma < currrent_time && currentPtr->topic_ma != 0){
+				char* deleted_uri_topic = malloc(sizeof(char) *(strlen(currentPtr->path)+2));
+				sprintf(deleted_uri_topic, "%s", currentPtr->path);
+				RESOURCES_ITER((*global_ctx)->resources, r) {
+					if (compareString(r->uri.s, deleted_uri_topic)){
+						if (deleteTopic(&topicDB, r->uri.s)){
+							MQTTClient_unsubscribe(*global_client, r->uri.s);
+							RESOURCES_DELETE((*global_ctx)->resources, r);
+							coapFreeResource(r);
+							break;
+						} 
+					}
+				}
+				free(deleted_uri_topic);
+			}
+			
+			currentPtr = currentPtr->nextPtr;   
+		} /* end while */ 
+	} /* end else */ 
+}
 #endif
 
 #ifdef MQTT_CLIENT
@@ -847,8 +924,8 @@ int main(int argc, char* argv[])
             if ( FD_ISSET( ctx->sockfd, &readfds ) ) 
                 coap_read( ctx );       
         } 
-        printDB(topicDB);
-        //topicMaxAgeMonitor(topicDB);
+        //printDB(topicDB);
+        topicMonitor(topicDB);
     }
     
     /* clean-up */
@@ -868,63 +945,6 @@ int main(int argc, char* argv[])
     
     return 0;
 }
-
-int parseOptionURIQuery(char* option_value, unsigned short option_length, char** query_name, char** query_value){
-	char* temp_uri_query = malloc(sizeof(char) * (option_length+2));
-	snprintf(temp_uri_query, option_length+1, "%s", option_value);
-	
-	int name_size, value_size;
-	int upper_status = calOptionSize(temp_uri_query,&name_size, &value_size);
-	if (upper_status && name_size > 0 && value_size > 0){
-		*query_name = malloc(sizeof(char) * (name_size+1));
-		*query_value = malloc(sizeof(char) * (value_size+1));
-		int status = parseOption(temp_uri_query, *query_name, *query_value);
-		if(status){
-			free(temp_uri_query);
-			return 1;
-		}
-		
-		else{
-			free(temp_uri_query);
-			return 0;
-		}
-	}
-	
-	else {
-		free(temp_uri_query);
-		return -1;
-	}
-}
-
-void dynamicConcatenate(char **str, char *str2) {
-    char *tmp = NULL;
-
-    // Reset *str
-    if ( *str != NULL && str2 == NULL ) {
-        free(*str);
-        *str = NULL;
-        return;
-    }
-
-	if ( str2 == NULL ) {
-		printf("Error Source Empty\n");
-        return;
-    }
-
-    // Initial copy
-    if (*str == NULL) {
-        *str = malloc( (strlen(str2)+1) * sizeof(char) );
-        strcpy(*str, str2);
-    }
-    else { // Append
-        tmp = malloc ( (strlen(*str)+1 )* sizeof(char) );
-        strcpy(tmp, *str);
-        *str = (char *) realloc((*str) ,  (strlen(*str)+strlen(str2)+1) * sizeof(char) );
-        sprintf(*str, "%s%s", tmp, str2);
-        free(tmp);
-    }
-
-} 
 
 static void
 hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource, 
@@ -1015,7 +1035,6 @@ hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 		debug("Total Requested Resource  		: %ld\n", requested_link_format_counter);
 	
 		coap_block_t 			block;
-		response->hdr->code 	= COAP_RESPONSE_CODE(205);		
 		coap_add_option			(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, COAP_MEDIATYPE_APPLICATION_LINK_FORMAT), buf);
 		  
 		if (request) { 
@@ -1054,7 +1073,9 @@ hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 			}    
 		}
 		
-		free(requested_link_format_data); 
+		response->hdr->code 	= COAP_RESPONSE_CODE(205);		
+		free(requested_link_format_data);
+		return;
 	}
 	
 	else {
@@ -1174,8 +1195,9 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 			
 			/* "Unsupported content format for topic" handler */
 			if ( !ct_value_valid ){
-				response->hdr->code = COAP_RESPONSE_CODE(406);
 				coapFreeResource(new_resource); 
+				response->hdr->code = COAP_RESPONSE_CODE(406);
+				coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 				return;
 			}			
 		}	
@@ -1201,6 +1223,7 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 			updateTopicInfo(&topicDB, new_resource->uri.s, abs_topic_ma);
 			coapFreeResource(new_resource);
 			response->hdr->code = COAP_RESPONSE_CODE(403); 
+			coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 			return ;
 		}
 	}
@@ -1218,6 +1241,7 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 			coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
 			addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, abs_topic_ma);
 			response->hdr->code = COAP_RESPONSE_CODE(201) ;
+			coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 			return ; 
 	}
 	/* Successful Creation of the topic */
@@ -1226,6 +1250,7 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 	/* don't need to free new_resource. Any error will be handle and freed in parseLinkFormat() */
 	if (!status){
 		response->hdr->code = COAP_RESPONSE_CODE(400);
+		coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 		return ; 
 	} 
 	/* malformed request */
@@ -1301,6 +1326,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 				debug("requested ct : %d\n", ct_opt_val_integer);
 				debug("available ct : %d\n", ct_attr_value);
 				response->hdr->code 	= COAP_RESPONSE_CODE(415);
+				coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 				return;
 			}	
 		}
@@ -1309,6 +1335,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 		/* Bad Request */
 		else if((!ct_opt_status || (!ct_opt_status && is_observe_registration_request)) && !is_observe_notification_response){
 			response->hdr->code 	= COAP_RESPONSE_CODE(400);
+			coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 			return;
 		}
 		/* Bad Request */
@@ -1318,6 +1345,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 		/* Not Found */
 		if (temp == NULL ) {
 				response->hdr->code 	= COAP_RESPONSE_CODE(404);
+				coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 				return;
 		}
 		/* Not Found */
@@ -1331,6 +1359,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 				}
 				coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, ct_attr_value), buf);
 				response->hdr->code 	= COAP_RESPONSE_CODE(204);
+				coap_add_data(response, strlen("No Content"),(unsigned char *)"No Content");
 				return;
 			}
 			/* No Content */
@@ -1344,6 +1373,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 				if (remaining_maxage_time < 0 && !(temp->data_ma == 0)){
 					coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, ct_attr_value), buf);
 					response->hdr->code 	= COAP_RESPONSE_CODE(204);
+					coap_add_data(response, strlen("No Content"),(unsigned char *)"No Content");
 					return;
 				}
 				else{
@@ -1414,6 +1444,7 @@ static void hnd_put_topic(coap_context_t *ctx ,
 		
 		if (ct_attr_value != ct_opt_val_integer){ 
 			response->hdr->code 	= COAP_RESPONSE_CODE(415);
+			coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 			return;
 		}	
 	}
@@ -1422,6 +1453,7 @@ static void hnd_put_topic(coap_context_t *ctx ,
 	/* Bad Request */
 	else {
 		response->hdr->code 	= COAP_RESPONSE_CODE(400);
+		coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 		return;
 	}
 	/* Bad Request */
@@ -1430,6 +1462,7 @@ static void hnd_put_topic(coap_context_t *ctx ,
 	/* Not Found */ // It should never have this condition, ever. Just in Case. //
 	if (temp == NULL ) {
 		response->hdr->code 	= COAP_RESPONSE_CODE(404);
+		coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 		return;
 	}
 	/* Not Found */
@@ -1446,7 +1479,8 @@ static void hnd_put_topic(coap_context_t *ctx ,
 		debug("Waiting for publication of %s on topic %s for client with ClientID: %s\n", data, resource->uri.s, CLIENTID); // printing unsafe data //
 		resource->dirty = 1;
 		coap_check_notify(ctx);
-		response->hdr->code = COAP_RESPONSE_CODE(204); 
+		response->hdr->code = COAP_RESPONSE_CODE(204);
+		coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code)); 
 		return;
 	} 
 }
@@ -1513,6 +1547,7 @@ static void hnd_post_topic(coap_context_t *ctx ,
                 coap_pdu_t *request ,
                 str *token ,
                 coap_pdu_t *response ){
+	
 	coap_resource_t *new_resource = NULL;
 		
 	/* declare a safe variable for data */
@@ -1616,8 +1651,9 @@ static void hnd_post_topic(coap_context_t *ctx ,
 			
 			/* "Unsupported content format for topic" handler */
 			if ( !ct_value_valid ){
-				response->hdr->code = COAP_RESPONSE_CODE(406);
 				coapFreeResource(new_resource); 
+				response->hdr->code = COAP_RESPONSE_CODE(406);
+				coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 				return;
 			}			
 		}	
@@ -1643,6 +1679,7 @@ static void hnd_post_topic(coap_context_t *ctx ,
 			updateTopicInfo(&topicDB, new_resource->uri.s, abs_topic_ma);
 			coapFreeResource(new_resource);
 			response->hdr->code = COAP_RESPONSE_CODE(403); 
+			coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 			return ;
 		}
 	}
@@ -1660,6 +1697,7 @@ static void hnd_post_topic(coap_context_t *ctx ,
 			coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
 			addTopicWEC(&topicDB, new_resource->uri.s, new_resource->uri.length, abs_topic_ma);
 			response->hdr->code = COAP_RESPONSE_CODE(201) ;
+			coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 			return ; 
 	}
 	/* Successful Creation of the topic */
@@ -1668,6 +1706,7 @@ static void hnd_post_topic(coap_context_t *ctx ,
 	/* don't need to free new_resource. Any error will be handle and freed in parseLinkFormat() */
 	if (!status){
 		response->hdr->code = COAP_RESPONSE_CODE(400);
+		coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
 		return ; 
 	} 
 	/* malformed request */
