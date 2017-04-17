@@ -61,6 +61,7 @@ void coapFreeResource(coap_resource_t *resource){
 #endif
 
 #ifdef LL_DATABASE  
+
 /* self-referential structure */
 struct topicData {            
 	char* path;
@@ -68,13 +69,28 @@ struct topicData {
     time_t topic_ma;	// max-age for topic in time after epoch
     time_t data_ma;		// max-age for data in time after epoch
     struct topicData *nextPtr; /* pointer to next node*/ 
+    pthread_rwlock_t  node_lock;
+    pthread_rwlock_t  data_lock;
 }; /* end structure topicData */
 
 typedef struct topicData TopicData; /* synonym for struct topicData */
-typedef TopicData *TopicDataPtr; /* synonym for TopicData* */
+typedef TopicData* TopicDataPtr; /* synonym for TopicData* */
 
 /* prototypes */
 TopicDataPtr getTopic( TopicDataPtr *sPtr, char* path);
+TopicDataPtr cloneTopic( TopicDataPtr *sPtr, char* path);
+int			freeTopic(TopicDataPtr topic);
+	
+int			getTopicPath(TopicDataPtr topic, char ** path);
+int			getTopicData(TopicDataPtr topic, char ** data);
+time_t 		getTopicMA(TopicDataPtr topic);
+time_t 		getTopicDataMA(TopicDataPtr topic);
+int 		topicNodeRLock(TopicDataPtr topic);
+int 		topicNodeWLock(TopicDataPtr topic);
+int 		topicNodeUnlock(TopicDataPtr topic);
+int 		topicDataRLock(TopicDataPtr topic);
+int 		topicDataWLock(TopicDataPtr topic);
+int 		topicDataUnlock(TopicDataPtr topic);
 int			setTopic( TopicDataPtr *sPtr, 
 					char* path, char* data, size_t data_size, 
 					time_t topic_ma, time_t data_ma);
@@ -94,8 +110,7 @@ int			updateTopicInfo(TopicDataPtr *sPtr,
 int			updateTopicData(TopicDataPtr *sPtr,
 					char* path, time_t data_ma,
 					char* data, size_t data_size);
-
-
+					
 int 		DBEmpty( TopicDataPtr sPtr );
 void 		printDB( TopicDataPtr currentPtr );
 void 		cleanDB( TopicDataPtr *sPtr );
@@ -106,50 +121,296 @@ int 		compareString(char* a, char* b){
 	else return 0;
 }
 
+
 /* start function get */
-TopicDataPtr getTopic( TopicDataPtr *sPtr, char* path)
-{ 
+TopicDataPtr getTopic( TopicDataPtr *sPtr, char* path){ 
+	
     TopicDataPtr previousPtr = NULL; /* pointer to previous node in list */
     TopicDataPtr currentPtr = NULL;  /* pointer to current node in list */
     TopicDataPtr tempPtr = NULL;     /* temporary node pointer */
 	
-	if (path == NULL || DBEmpty(*sPtr)) { return NULL;} 
+	if (path == NULL || DBEmpty(*sPtr)) { 
+		return NULL;
+	} 
+	else { 
+		pthread_rwlock_rdlock(&(( *sPtr )->node_lock));
+	}
 	
-    /* delete first node */
-  
     if ( compareString(( *sPtr )->path,path)) { 
-        tempPtr = *sPtr; /* hold onto node being removed */
+        tempPtr = *sPtr;
+        pthread_rwlock_unlock(&(( *sPtr )->node_lock)); 
         return tempPtr;
-    } /* end if */
+    } 
+    
     else { 
         previousPtr = *sPtr;
         currentPtr = ( *sPtr )->nextPtr;
-
+		pthread_rwlock_unlock(&(( *sPtr )->node_lock));
+				
         /* loop to find the correct location in the list */
-        while ( currentPtr != NULL && !compareString(currentPtr->path,path) ) { 
+        while ( currentPtr != NULL ) { 
+			pthread_rwlock_rdlock(&(currentPtr->node_lock));
+			if (compareString(currentPtr->path,path)){
+				break;
+			}
+			
             previousPtr = currentPtr;         /* walk to ...   */
             currentPtr = currentPtr->nextPtr; /* ... next node */  
+            pthread_rwlock_unlock(&(previousPtr->node_lock));
         } /* end while */
 
         /* delete node at currentPtr */
         if ( currentPtr != NULL ) { 
             tempPtr = currentPtr;
+            pthread_rwlock_unlock(&(currentPtr->node_lock));
             return tempPtr;
         } /* end if */
-     
+		else{
+			return NULL;
+		}
     } /* end else */
-
-    return NULL;
-
 } 
+
+
+TopicDataPtr 	cloneTopic(TopicDataPtr *sPtr, char* path){ 
+	
+    TopicDataPtr previousPtr = NULL; /* pointer to previous node in list */
+    TopicDataPtr currentPtr = NULL;  /* pointer to current node in list */
+    TopicDataPtr tempPtr = NULL;     /* temporary node pointer */
+	
+	if (path == NULL || DBEmpty(*sPtr)) { 
+		return NULL;
+	} 
+	else { 
+		pthread_rwlock_rdlock(&(( *sPtr )->node_lock));
+	}
+	
+    if ( compareString(( *sPtr )->path,path)) { 
+        tempPtr = *sPtr;
+		
+		TopicDataPtr newPtr = NULL;      /* pointer to new node */
+		newPtr = malloc( sizeof( TopicData ) ); /* create node on heap */
+			
+		if ( newPtr != NULL ) { /* is space available */
+			int path_size = strlen(tempPtr->path);
+			char* temp_path = malloc(sizeof(char) * (path_size + 2));		
+			snprintf(temp_path,sizeof(char) * (path_size+1), "%s", tempPtr->path);
+			
+			char* temp_data;
+			if (tempPtr->data != NULL){
+				int data_size = strlen(tempPtr->data);
+				temp_data = malloc(sizeof(char) * (data_size + 2));		
+				snprintf(temp_data,sizeof(char) * (data_size+1), "%s", tempPtr->data);
+			}
+			else {
+				temp_data = NULL;
+			}
+			
+			newPtr->path = temp_path; /* place value in node */
+			newPtr->data = temp_data; /* place value in node */
+			newPtr->data_ma = tempPtr->data_ma; /* place value in node */
+			newPtr->topic_ma = tempPtr->topic_ma; /* place value in node */
+			newPtr->nextPtr = NULL; /* node does not link to another node */
+			pthread_rwlock_init(&(newPtr->node_lock), NULL);
+			pthread_rwlock_init(&(newPtr->data_lock), NULL);
+			
+			pthread_rwlock_unlock(&(( *sPtr )->node_lock));
+			return newPtr;
+		}
+		
+		else {
+			free(newPtr); /* not needed */
+			pthread_rwlock_unlock(&(( *sPtr )->node_lock));
+			return NULL;
+		}
+    } 
+    
+    else { 
+        previousPtr = *sPtr;
+        currentPtr = ( *sPtr )->nextPtr;
+		pthread_rwlock_unlock(&(( *sPtr )->node_lock));
+				
+        /* loop to find the correct location in the list */
+        while ( currentPtr != NULL ) { 
+			pthread_rwlock_rdlock(&(currentPtr->node_lock));
+			if (compareString(currentPtr->path,path)){
+				break;
+			}
+			
+            previousPtr = currentPtr;         /* walk to ...   */
+            currentPtr = currentPtr->nextPtr; /* ... next node */  
+            pthread_rwlock_unlock(&(previousPtr->node_lock));
+        } /* end while */
+
+        /* delete node at currentPtr */
+        if ( currentPtr != NULL ) { 
+            tempPtr = currentPtr;
+            
+            TopicDataPtr newPtr = NULL;      /* pointer to new node */
+			newPtr = malloc( sizeof( TopicData ) ); /* create node on heap */
+				
+			if ( newPtr != NULL ) { /* is space available */
+				int path_size = strlen(tempPtr->path);
+				char* temp_path = malloc(sizeof(char) * (path_size + 2));		
+				snprintf(temp_path,sizeof(char) * (path_size+1), "%s", tempPtr->path);
+				
+				char* temp_data;
+				if (tempPtr->data != NULL){
+					int data_size = strlen(tempPtr->data);
+					temp_data = malloc(sizeof(char) * (data_size + 2));		
+					snprintf(temp_data,sizeof(char) * (data_size+1), "%s", tempPtr->data);
+				}
+				else {
+					temp_data = NULL;
+				}
+				
+				newPtr->path = temp_path; /* place value in node */
+				newPtr->data = temp_data; /* place value in node */
+				newPtr->data_ma = tempPtr->data_ma; /* place value in node */
+				newPtr->topic_ma = tempPtr->topic_ma; /* place value in node */
+				newPtr->nextPtr = NULL; /* node does not link to another node */
+				pthread_rwlock_init(&(newPtr->node_lock), NULL);
+				pthread_rwlock_init(&(newPtr->data_lock), NULL);
+				
+				pthread_rwlock_unlock(&(currentPtr->node_lock));
+				return newPtr;
+			}
+			
+			else {
+				free(newPtr); /* not needed */
+				pthread_rwlock_unlock(&(currentPtr->node_lock));
+				return NULL;
+			}
+        } /* end if */
+		else{
+			return NULL;
+		}
+    } /* end else */
+} 
+
+int		freeTopic(TopicDataPtr topic){
+	
+	if (topic != NULL){
+		free( topic->data );
+		free( topic->path );
+		pthread_rwlock_destroy(&(topic->node_lock));
+		pthread_rwlock_destroy(&(topic->data_lock));
+		free( topic );
+		return 1;
+	}
+	else {
+		return 0;
+	}
+}
+int 		getTopicPath(TopicDataPtr topic, char ** path ){
+	
+	if(topic != NULL) {
+		topicNodeRLock(topic);
+		topicDataRLock(topic);
+		
+		int path_size = strlen(topic->path);
+		*path = malloc(sizeof(char) * (path_size+2));
+		snprintf(*path,sizeof(char) * (path_size+1), "%s", topic->path);
+		
+		
+		topicDataUnlock(topic);
+		topicNodeUnlock(topic);
+		
+		return 1;
+	}
+	else {
+		return 0;
+	}
+	
+}
+int 		getTopicData(TopicDataPtr topic, char ** data){
+	
+	if(topic != NULL) {		
+		topicNodeRLock(topic);
+		topicDataRLock(topic);
+		
+		int data_size = strlen(topic->data);
+		*data = malloc(sizeof(char) * (data_size+2));
+		snprintf(*data,sizeof(char) * (data_size+1), "%s", topic->data);
+		
+		topicDataUnlock(topic);
+		topicNodeUnlock(topic);
+		
+		return 1;
+	}
+	else {
+		return 0;
+	}
+}
+time_t 		getTopicMA(TopicDataPtr topic){
+
+	if(topic != NULL) {		
+		topicNodeRLock(topic);
+		topicDataRLock(topic);
+		
+		time_t topic_ma = topic->topic_ma;
+		
+		topicDataUnlock(topic);
+		topicNodeUnlock(topic);
+		
+		return topic_ma;
+	}
+	else {
+		return -1;
+	}
+	
+}
+time_t 		getTopicDataMA(TopicDataPtr topic){
+	
+	if(topic != NULL) {		
+		topicNodeRLock(topic);
+		topicDataRLock(topic);
+		
+		time_t data_ma = topic->data_ma;
+		
+		topicDataUnlock(topic);
+		topicNodeUnlock(topic);
+		
+		return data_ma;
+	}
+	else {
+		return -1;
+	}
+}
+
+int 		topicNodeRLock(TopicDataPtr topic){	
+	return pthread_rwlock_rdlock(&(topic->node_lock));
+}
+
+int 		topicNodeWLock(TopicDataPtr topic){
+	return pthread_rwlock_wrlock(&(topic->node_lock));
+}
+
+int 		topicNodeUnlock(TopicDataPtr topic){
+	return pthread_rwlock_unlock(&(topic->node_lock));
+}
+
+int 		topicDataRLock(TopicDataPtr topic){
+	return pthread_rwlock_rdlock(&(topic->data_lock));
+}
+
+int 		topicDataWLock(TopicDataPtr topic){
+	return pthread_rwlock_wrlock(&(topic->data_lock));
+}
+
+int 		topicDataUnlock(TopicDataPtr topic){
+	return pthread_rwlock_unlock(&(topic->data_lock));
+}
 
 int setTopic( TopicDataPtr *sPtr, 
 					char* path, char* data, size_t data_size, 
 					time_t topic_ma, time_t data_ma)
 { 
-	
+	/* need to change getTopic() this, can lead to thread-unsafe */
 	TopicDataPtr topic = getTopic(sPtr, path);
 	if (topic != NULL){
+		topicNodeRLock(topic);
+		topicDataWLock(topic); 
 		if( data_size > 0 && data != NULL){
 			char* temp_data = malloc(sizeof(char) * (data_size + 2));
 			snprintf(temp_data,sizeof(char) * (data_size + 1), "%s", data);
@@ -165,6 +426,8 @@ int setTopic( TopicDataPtr *sPtr,
 		
 		topic->topic_ma		= topic_ma;
 		topic->data_ma 		= data_ma;
+		topicDataUnlock(topic);
+		topicNodeUnlock(topic);
 		return 1;
 	}
 	
@@ -203,6 +466,11 @@ int	addTopic(TopicDataPtr *sPtr,
 			newPtr->data_ma = 0; /* place value in node */
 			newPtr->topic_ma = topic_ma; /* place value in node */
 			newPtr->nextPtr = NULL; /* node does not link to another node */
+			pthread_rwlock_init(&(newPtr->node_lock), NULL);
+			pthread_rwlock_init(&(newPtr->data_lock), NULL);
+			
+			/*int lock_init = pthread_rwlock_init(&(newPtr->node_lock), NULL);
+			printf("Lock init : %s\n", lock_init == 0? "success" : "failed"); */
 			/* add data to new struct here */
 		}
 		else {
@@ -215,20 +483,27 @@ int	addTopic(TopicDataPtr *sPtr,
 
         /* loop to find the correct location in the list */
         while ( currentPtr != NULL) { 
-			//TODO: if data available, stop. update topic_ma and ct
+			
+			pthread_rwlock_rdlock(&(currentPtr->node_lock));
 			
             previousPtr = currentPtr;          /* walk to ...   */
             currentPtr = currentPtr->nextPtr;  /* ... next node */
+            
+            pthread_rwlock_unlock(&(previousPtr->node_lock));
         } /* end while */
-
+		
+		/* we should add read-write lock for linked-list head */
         /* insert new node at beginning of list */
         if ( previousPtr == NULL ) { 
+			
             newPtr->nextPtr = *sPtr;
             *sPtr = newPtr;
         } /* end if */
         else { /* insert new node between previousPtr and currentPtr */
+			pthread_rwlock_wrlock(&(previousPtr->node_lock));
             previousPtr->nextPtr = newPtr;
             newPtr->nextPtr = currentPtr;
+            pthread_rwlock_unlock(&(previousPtr->node_lock));
         } /* end else */
 		return 1;
     } /* end if */
@@ -259,50 +534,81 @@ int deleteTopic( TopicDataPtr *sPtr, char* path)
     TopicDataPtr currentPtr = NULL;  /* pointer to current node in list */
     TopicDataPtr tempPtr = NULL;     /* temporary node pointer */
 
-	if (path == NULL || DBEmpty(*sPtr)) { return 0;}
+	if (path == NULL || DBEmpty(*sPtr)) { 
+		return 0;
+	}
+	else { 
+		pthread_rwlock_rdlock(&(( *sPtr )->node_lock));
+	}
 	
     /* delete first node */
     if ( compareString(( *sPtr )->path,path)) { 
+		pthread_rwlock_unlock(&(( *sPtr )->node_lock));
+		
+		pthread_rwlock_wrlock(&(( *sPtr )->node_lock));
         tempPtr = *sPtr; /* hold onto node being removed */
         *sPtr = ( *sPtr )->nextPtr; /* de-thread the node */
+        pthread_rwlock_unlock(&(tempPtr->node_lock));
+        
         free( tempPtr->data );
         free( tempPtr->path );
+        pthread_rwlock_destroy(&(tempPtr->node_lock));
+        pthread_rwlock_destroy(&(tempPtr->data_lock));
         free( tempPtr ); /* free the de-threaded node */
         return 1;
     } /* end if */
     else { 
         previousPtr = *sPtr;
         currentPtr = ( *sPtr )->nextPtr;
-
+		pthread_rwlock_unlock(&(( *sPtr )->node_lock));
+		
         /* loop to find the correct location in the list */
-        while ( currentPtr != NULL && !compareString(currentPtr->path,path) ) { 
+        while ( currentPtr != NULL ) { 
+			pthread_rwlock_rdlock(&(currentPtr->node_lock)); 
+			if (compareString(currentPtr->path,path)){
+				break;
+			}
             previousPtr = currentPtr;         /* walk to ...   */
-            currentPtr = currentPtr->nextPtr; /* ... next node */  
+            currentPtr = currentPtr->nextPtr; /* ... next node */
+            pthread_rwlock_unlock(&(previousPtr->node_lock));  
         } /* end while */
 
         /* delete node at currentPtr */
         if ( currentPtr != NULL ) { 
+			
             tempPtr = currentPtr;
+			pthread_rwlock_unlock(&(currentPtr->node_lock));
+			
+			pthread_rwlock_wrlock(&(previousPtr->node_lock));
+            pthread_rwlock_wrlock(&(currentPtr->node_lock));
+            
             previousPtr->nextPtr = currentPtr->nextPtr;
+            
+            pthread_rwlock_unlock(&(currentPtr->node_lock));
+            pthread_rwlock_unlock(&(previousPtr->node_lock));
             free( tempPtr->data );
             free( tempPtr->path );
+            pthread_rwlock_destroy(&(tempPtr->node_lock));
+			pthread_rwlock_destroy(&(tempPtr->data_lock));
             free( tempPtr );
             return 1;
         } /* end if */
-     
+		else{
+			return 0;
+		}
     } /* end else */
-
-    return 0;
-
 } /* end function delete */
 
 int deleteTopicData( TopicDataPtr *sPtr, char* path)
 { 
-	
 	TopicDataPtr topic = getTopic(sPtr, path);
 	if (topic != NULL){
+		topicNodeRLock(topic);
+		topicDataWLock(topic); 
 		free( topic->data );
 		topic->data			= NULL;
+		topicDataUnlock(topic);
+		topicNodeUnlock(topic); 
 		return 1;
 	}
 	
@@ -368,9 +674,16 @@ void printDB( TopicDataPtr currentPtr )
 
         /* while not the end of the list */
         while ( currentPtr != NULL ) { 
+			topicNodeRLock(currentPtr);
+			topicDataRLock(currentPtr);
+            
             printf( "%s %s %d %d --> ",currentPtr->path, currentPtr->data,
-            (int)currentPtr->topic_ma, (int)currentPtr->data_ma);
+            (int)currentPtr->topic_ma, (int)currentPtr->data_ma);            
+            TopicDataPtr previousPtr = currentPtr;
             currentPtr = currentPtr->nextPtr;   
+            
+            topicDataUnlock(previousPtr);
+            topicNodeUnlock(previousPtr);
         } /* end while */
 
         printf( "NULL\n\n" );
@@ -379,16 +692,21 @@ void printDB( TopicDataPtr currentPtr )
 } /* end function printList */
 
 /* Clean the list */
-void cleanDB( TopicDataPtr *sPtr )
-{ 
+void cleanDB( TopicDataPtr *sPtr ){ 
  
- while(!DBEmpty(*sPtr)){ 
-	TopicDataPtr tempPtr = NULL;     /* temporary node pointer */
+	while(!DBEmpty(*sPtr)){ 
+		TopicDataPtr tempPtr = NULL;     /* temporary node pointer */
         tempPtr = *sPtr; /* hold onto node being removed */
+        
+		topicNodeWLock(tempPtr);
         *sPtr = ( *sPtr )->nextPtr; /* de-thread the node */
+        topicNodeUnlock(tempPtr); 
+        
         free( tempPtr->data );
         free( tempPtr->path );
-        free( tempPtr ); /* free the de-threaded node */ 
+        pthread_rwlock_destroy(&(tempPtr->node_lock));
+        pthread_rwlock_destroy(&(tempPtr->data_lock));
+        free( tempPtr ); /* free the de-threaded node */
     } /* end if */
 
 } /* end function printList */
@@ -1340,7 +1658,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 		}
 		/* Bad Request */
 		
-		TopicDataPtr temp = getTopic(&topicDB, resource->uri.s);
+		TopicDataPtr temp = cloneTopic(&topicDB, resource->uri.s);
 		/* It should never have this condition, ever. Just in Case. */
 		/* Not Found */
 		if (temp == NULL ) {
@@ -1360,6 +1678,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 				coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, ct_attr_value), buf);
 				response->hdr->code 	= COAP_RESPONSE_CODE(204);
 				coap_add_data(response, strlen("No Content"),(unsigned char *)"No Content");
+				freeTopic(temp);
 				return;
 			}
 			/* No Content */
@@ -1374,6 +1693,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 					coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, ct_attr_value), buf);
 					response->hdr->code 	= COAP_RESPONSE_CODE(204);
 					coap_add_data(response, strlen("No Content"),(unsigned char *)"No Content");
+					freeTopic(temp);
 					return;
 				}
 				else{
@@ -1386,6 +1706,7 @@ static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource,
 						coap_add_option(response, COAP_OPTION_MAXAGE,coap_encode_var_bytes(buf, remaining_maxage_time), buf);
 					} 
 					coap_add_data(response, strlen(temp->data), temp->data);
+					freeTopic(temp);
 					return;
 				}
 			}
@@ -1458,7 +1779,7 @@ static void hnd_put_topic(coap_context_t *ctx ,
 	}
 	/* Bad Request */
 	
-	TopicDataPtr temp = getTopic(&topicDB, resource->uri.s);
+	TopicDataPtr temp = cloneTopic(&topicDB, resource->uri.s);
 	/* Not Found */ // It should never have this condition, ever. Just in Case. //
 	if (temp == NULL ) {
 		response->hdr->code 	= COAP_RESPONSE_CODE(404);
@@ -1481,6 +1802,7 @@ static void hnd_put_topic(coap_context_t *ctx ,
 		coap_check_notify(ctx);
 		response->hdr->code = COAP_RESPONSE_CODE(204);
 		coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code)); 
+		freeTopic(temp);
 		return;
 	} 
 }
