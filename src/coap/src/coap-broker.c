@@ -18,24 +18,23 @@
 #include <semaphore.h> 
 #include "MQTTClient.h"
 #include <ctype.h>
-   
+#include <limits.h> 
+#include <coap.h> 
+
 #define LL_DATABASE
 #define LF_PARSER
 #define LIBCOAP_MOD
 #define GLOBAL_DATA
 #define MQTT_CLIENT
-#define RESOURCE_LF
 #define OTHER_FUNCTION
 
-#include <coap.h> 
  
 #ifdef LIBCOAP_MOD
 void coapDeleteAttr(coap_attr_t *attr) {
      if (!attr)
        return; 
      coap_free(attr->name.s); 
-     coap_free(attr->value.s);
-    
+     coap_free(attr->value.s);    
      coap_free_type(COAP_RESOURCEATTR, attr); 
    }           
 void coapFreeResource(coap_resource_t *resource){
@@ -120,7 +119,6 @@ int 		compareString(char* a, char* b){
 	if (strcmp(a,b) == 0)	return 1;
 	else return 0;
 }
-
 
 /* start function get */
 TopicDataPtr getTopic( TopicDataPtr *sPtr, char* path){ 
@@ -606,6 +604,7 @@ int deleteTopicData( TopicDataPtr *sPtr, char* path)
 		topicNodeRLock(topic);
 		topicDataWLock(topic); 
 		free( topic->data );
+		topic->data_ma		= 0;
 		topic->data			= NULL;
 		topicDataUnlock(topic);
 		topicNodeUnlock(topic); 
@@ -644,7 +643,6 @@ int updateTopicData(TopicDataPtr *sPtr,
    
 	TopicDataPtr temp = getTopic(sPtr, path);
 	if(temp != NULL){
-		
 		return setTopic(sPtr,path, data, data_size, temp->topic_ma, data_ma);
 	}
 	else {
@@ -713,30 +711,6 @@ void cleanDB( TopicDataPtr *sPtr ){
 
 #endif
 
-#ifdef RESOURCE_LF
-
-int calculateResourceLF(coap_resource_t* resource){
-	if(resource != NULL){
-		int lf_size = 0;
-		/* </ uri > . added additional 3 char of <,/, and > */ 
-		lf_size += resource->uri.length + 3;
-		 
-		coap_attr_t *attr; 
-		LL_FOREACH(resource->link_attr, attr) {
-			debug("Attr of %s with value of %s\n", attr->name.s, attr->value.s);
-			/* ; name = value . added 2 additional char of ; and = */ 
-			lf_size += (attr->name.length) + (attr->value.length) + 2;
-		}
-		if (resource->observable){
-			/* if observable add 4 char of ";obs" */
-			lf_size += 4;
-		}
-		return lf_size;
-	}
-}
-
-
-#endif
 #ifdef LF_PARSER
 /* restrict doesn't work properly*/
 #define RESTRICT_CHAR
@@ -948,38 +922,7 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 	  }
 	  return master_status;
 }
- 
-/* Link Format Parser ends here */
 
-#endif
-
-#ifdef GLOBAL_DATA
-
-	coap_context_t**  	global_ctx;
-	MQTTClient* 		global_client;
-	TopicDataPtr 		topicDB = NULL; /* initially there are no nodes */
-	char broker_path[8] = "ps";
-	
-	static int quit = 0;
-	static void	handleSIGINT(int signum) {
-		quit = 1;
-		
-		RESOURCES_ITER((*global_ctx)->resources, r) {
-			if(!compareString(r->uri.s, broker_path)){
-				deleteTopic(&topicDB, r->uri.s);
-				MQTTClient_unsubscribe(*global_client, r->uri.s);
-				RESOURCES_DELETE((*global_ctx)->resources, r);
-				coapFreeResource(r);
-			}
-		}	 
-		coap_free_context((*global_ctx));  
-		MQTTClient_disconnect((*global_client), 10000);
-		MQTTClient_destroy(global_client);
-		exit(0);
-	}
-#endif
-
-#ifdef OTHER_FUNCTION
 int parseOptionURIQuery(char* option_value, unsigned short option_length, char** query_name, char** query_value){
 	char* temp_uri_query = malloc(sizeof(char) * (option_length+2));
 	snprintf(temp_uri_query, option_length+1, "%s", option_value);
@@ -1036,30 +979,143 @@ void dynamicConcatenate(char **str, char *str2) {
     }
 
 } 
-	
-void topicMonitor( TopicDataPtr currentPtr ){
+ 
+int calculateResourceLF(coap_resource_t* resource){
+	if(resource != NULL){
+		int lf_size = 0;
+		/* </ uri > . added additional 3 char of <,/, and > */ 
+		lf_size += resource->uri.length + 3;
+		 
+		coap_attr_t *attr; 
+		LL_FOREACH(resource->link_attr, attr) {
+			debug("Attr of %s with value of %s\n", attr->name.s, attr->value.s);
+			/* ; name = value . added 2 additional char of ; and = */ 
+			lf_size += (attr->name.length) + (attr->value.length) + 2;
+		}
+		if (resource->observable){
+			/* if observable add 4 char of ";obs" */
+			lf_size += 4;
+		}
+		return lf_size;
+	}
+}
 
+/* Link Format Parser ends here */
+#endif
+
+#ifdef GLOBAL_DATA
+
+	coap_context_t**  	global_ctx;
+	MQTTClient* 		global_client;
+	TopicDataPtr 		topicDB = NULL; /* initially there are no nodes */
+	char 				broker_path[8] = "ps";
+	
+	time_t 				earliest_topic_max_age = LONG_MAX;
+	time_t 				earliest_data_max_age = LONG_MAX;
+		
+	static int quit = 0;
+	static void	handleSIGINT(int signum) {
+		quit = 1;
+		
+		RESOURCES_ITER((*global_ctx)->resources, r) {
+			if(!compareString(r->uri.s, broker_path)){
+				deleteTopic(&topicDB, r->uri.s);
+				MQTTClient_unsubscribe(*global_client, r->uri.s);
+				RESOURCES_DELETE((*global_ctx)->resources, r);
+				coapFreeResource(r);
+			}
+		}	 
+		coap_free_context((*global_ctx));  
+		MQTTClient_disconnect((*global_client), 10000);
+		MQTTClient_destroy(global_client);
+		exit(0);
+	}
+#endif
+
+#ifdef OTHER_FUNCTION
+
+void topicDataMAMonitor( TopicDataPtr currentPtr ){
+	
+	time_t master_time = time(NULL);
 	/* if list is empty */
 	if ( currentPtr == NULL ) {
-		printf( "List is empty.\n\n" );
+		debug( "List is empty.\n\n" );
 	} /* end if */
-	else {  
+	else if (earliest_data_max_age < master_time) {  
 			/* while not the end of the list */
-		while ( currentPtr != NULL ) { 
-			size_t currrent_time = time(NULL);
-			debug( "%s\t\t%ld\t%ld | %s\n ",currentPtr->path, currentPtr->topic_ma, currrent_time, currentPtr->topic_ma < currrent_time && currentPtr->topic_ma != 0? "Topic Expired. Deleting..." : "Topic Valid");
 			
+		time_t next_earliest_data_ma = LONG_MAX;
+		while ( currentPtr != NULL ) { 
+			topicNodeRLock(currentPtr);
+			TopicDataPtr nextPtr = currentPtr->nextPtr;
+			
+			topicDataRLock(currentPtr);
+			if(currentPtr->data_ma != 0 && currentPtr->data_ma != earliest_data_max_age && currentPtr->data_ma < next_earliest_data_ma){
+				next_earliest_data_ma = currentPtr->data_ma;
+			}
+			
+			time_t currrent_time = time(NULL);
+									
 			debug( "%s\t\t%ld\t%ld | %s\n ",currentPtr->path, currentPtr->data_ma, currrent_time, currentPtr->data_ma < currrent_time && currentPtr->data_ma != 0? "Data Expired. Deleting..." : "Data Valid");
 			
 			if(currentPtr->data_ma < currrent_time && currentPtr->data_ma != 0){
+				topicDataUnlock(currentPtr);				
+				topicNodeUnlock(currentPtr);
 				deleteTopicData(&topicDB, currentPtr->path);
 			}
+			else {				
+				topicDataUnlock(currentPtr);
+				topicNodeUnlock(currentPtr);
+			}
 			
+			currentPtr = nextPtr;   
+		} /* end while */ 
+		earliest_data_max_age = next_earliest_data_ma;
+		
+	} /* end else */ 
+
+	else{
+		debug( "No Data Max-Age Timeout yet.\n" );
+		if (earliest_data_max_age == LONG_MAX){
+			debug( "All data has infinite max-age\n");
+		}
+		else {
+			debug( "Remaining seconds to earliest data max-age %ld.\n", earliest_data_max_age - master_time );
+		}
+	}
+}
+
+void topicMAMonitor( TopicDataPtr currentPtr ){
+	
+	time_t master_time = time(NULL);
+	/* if list is empty */
+	if ( currentPtr == NULL ) {
+		debug( "List is empty.\n\n" );
+	} /* end if */
+	else if (earliest_topic_max_age < master_time) {  
+			/* while not the end of the list */
+			
+		time_t next_earliest_topic_ma = LONG_MAX;
+		while ( currentPtr != NULL ) { 
+			topicNodeRLock(currentPtr);
+			TopicDataPtr nextPtr = currentPtr->nextPtr;
+			
+			topicDataRLock(currentPtr);
+			if(currentPtr->topic_ma != 0 && currentPtr->topic_ma != earliest_topic_max_age && currentPtr->topic_ma < next_earliest_topic_ma){
+				next_earliest_topic_ma = currentPtr->topic_ma;
+			}
+			
+			time_t currrent_time = time(NULL);
+			
+			debug( "%s\t\t%ld\t%ld | %s\n ",currentPtr->path, currentPtr->topic_ma, currrent_time, currentPtr->topic_ma < currrent_time && currentPtr->topic_ma != 0? "Topic Expired. Deleting..." : "Topic Valid");
+						
 			if (currentPtr->topic_ma < currrent_time && currentPtr->topic_ma != 0){
 				char* deleted_uri_topic = malloc(sizeof(char) *(strlen(currentPtr->path)+2));
 				sprintf(deleted_uri_topic, "%s", currentPtr->path);
 				RESOURCES_ITER((*global_ctx)->resources, r) {
 					if (compareString(r->uri.s, deleted_uri_topic)){
+						topicDataUnlock(currentPtr);
+						topicNodeUnlock(currentPtr);
 						if (deleteTopic(&topicDB, r->uri.s)){
 							MQTTClient_unsubscribe(*global_client, r->uri.s);
 							RESOURCES_DELETE((*global_ctx)->resources, r);
@@ -1070,21 +1126,38 @@ void topicMonitor( TopicDataPtr currentPtr ){
 				}
 				free(deleted_uri_topic);
 			}
+			else {
+				
+				topicDataUnlock(currentPtr);
+				topicNodeUnlock(currentPtr);
+			}
 			
-			currentPtr = currentPtr->nextPtr;   
+			currentPtr = nextPtr;   
 		} /* end while */ 
+		earliest_topic_max_age = next_earliest_topic_ma;
+		
 	} /* end else */ 
+
+	else{
+		debug( "No Topic Max-Age Timeout yet.\n" );
+		if (earliest_topic_max_age == LONG_MAX){
+			debug( "All topic has infinite max-age\n");
+		}
+		else {
+			debug( "Remaining seconds to earliest topic max-age %ld.\n", earliest_topic_max_age - master_time );
+		}
+	}
 }
 #endif
 
 #ifdef MQTT_CLIENT
-	#define ADDRESS     "tcp://localhost:1883"
-	#define CLIENTID    "CoAPBroker" 
+
+	#define CLIENTID	"CoAPBroker"
 	#define QOS         1
 	#define TIMEOUT     10000L
-
+	
 	volatile MQTTClient_deliveryToken deliveredtoken;
-		
+	
 	void delivered(void *context, MQTTClient_deliveryToken dt)
 	{
 		debug("Message with token value %d delivery confirmed\n", dt);
@@ -1098,7 +1171,7 @@ void topicMonitor( TopicDataPtr currentPtr ){
 		
 		RESOURCES_ITER(((*global_ctx))->resources, r) {
 			if(compareString(r->uri.s, topicName)){
-				TopicDataPtr 	temp_data = getTopic(&topicDB,r->uri.s);
+				TopicDataPtr 	temp_data = cloneTopic(&topicDB,r->uri.s);
 				char*			temp_payload = malloc(sizeof(char)*(message->payloadlen + 2));
 				snprintf(temp_payload, (message->payloadlen)+1, "%s", (char*)message->payload);
 				debug("Data from DB : %s\n", temp_data->data);
@@ -1109,13 +1182,17 @@ void topicMonitor( TopicDataPtr currentPtr ){
 					coap_check_notify((*global_ctx));
 				}
 				free(temp_payload);
-				break;
+				freeTopic(temp_data);
+				
+				MQTTClient_freeMessage(&message);
+				MQTTClient_free(topicName);
+				return 1;
 			}
 		}
 		
 		MQTTClient_freeMessage(&message);
 		MQTTClient_free(topicName);
-		return 1;
+		return 0;
 	}
 
 	void connlost(void *context, char *cause)
@@ -1182,12 +1259,14 @@ int main(int argc, char* argv[])
 	global_ctx			= &ctx;
 	
 	/* MQTT Client Init */
+	
+	char mqtt_address[]    				= "tcp://localhost:1883";
 	MQTTClient 							client;
     global_client 						= &client;
     MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
     int rc 								= 0 ;
 
-    MQTTClient_create			(&client, ADDRESS, CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL);
+    MQTTClient_create			(&client, mqtt_address, CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL);
     conn_opts.keepAliveInterval = 20;
     conn_opts.cleansession 		= 1;
     MQTTClient_setCallbacks		(client, NULL, connlost, msgarrvd, delivered);
@@ -1243,7 +1322,8 @@ int main(int argc, char* argv[])
                 coap_read( ctx );       
         } 
         //printDB(topicDB);
-        topicMonitor(topicDB);
+        topicDataMAMonitor(topicDB);
+        topicMAMonitor(topicDB);
     }
     
     /* clean-up */
@@ -1538,6 +1618,10 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 		
 		/* "Topic already exists" handler */
 		if(found_resource){
+			if (abs_topic_ma < earliest_topic_max_age && abs_topic_ma != 0){
+					earliest_topic_max_age = abs_topic_ma;
+			}
+			
 			updateTopicInfo(&topicDB, new_resource->uri.s, abs_topic_ma);
 			coapFreeResource(new_resource);
 			response->hdr->code = COAP_RESPONSE_CODE(403); 
@@ -1548,7 +1632,11 @@ hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource,
 	/* Topic already exists. */
 	
 	/* Successful Creation of the topic */
-	if (status){		 	
+	if (status){
+			if (abs_topic_ma < earliest_topic_max_age && abs_topic_ma != 0){
+					earliest_topic_max_age = abs_topic_ma;
+			}
+			
 			MQTTClient_subscribe(*global_client, new_resource->uri.s, QOS);
 			coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
 			coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
@@ -1789,6 +1877,9 @@ static void hnd_put_topic(coap_context_t *ctx ,
 	/* Not Found */
 	
 	if (updateTopicData(&topicDB, resource->uri.s, ma_opt_val_time_t, data, size)){
+		if (ma_opt_val_time_t < earliest_data_max_age && ma_opt_val_time_t != 0){
+			earliest_data_max_age = ma_opt_val_time_t;
+		}		
 		MQTTClient_message pubmsg = MQTTClient_message_initializer;
 		MQTTClient_deliveryToken token;
 		pubmsg.payload = data;
@@ -1998,6 +2089,10 @@ static void hnd_post_topic(coap_context_t *ctx ,
 		
 		/* "Topic already exists" handler */
 		if(found_resource){
+			if (abs_topic_ma < earliest_topic_max_age && abs_topic_ma != 0){
+					earliest_topic_max_age = abs_topic_ma;
+			}
+			
 			updateTopicInfo(&topicDB, new_resource->uri.s, abs_topic_ma);
 			coapFreeResource(new_resource);
 			response->hdr->code = COAP_RESPONSE_CODE(403); 
@@ -2008,7 +2103,11 @@ static void hnd_post_topic(coap_context_t *ctx ,
 	/* Topic already exists. */
 	
 	/* Successful Creation of the topic */
-	if (status){		 	
+	if (status){
+			if (abs_topic_ma < earliest_topic_max_age && abs_topic_ma != 0){
+					earliest_topic_max_age = abs_topic_ma;
+			}
+			
 			MQTTClient_subscribe(*global_client, new_resource->uri.s, QOS);
 			coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
 			coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
@@ -2032,5 +2131,4 @@ static void hnd_post_topic(coap_context_t *ctx ,
 		return ; 
 	} 
 	/* malformed request */
-}
-
+} 
