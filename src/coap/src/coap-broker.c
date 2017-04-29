@@ -1817,7 +1817,7 @@ int main(int argc, char* argv[]){
 	signal(SIGINT, handleSIGINT);
 	/* Initialize CTRL+C Handler */
 	
-	/*Listen for incoming connections*/	
+	/* while loop from coap-rd.c
 	while ( !quit ) {
 		FD_ZERO(&readfds);
 		FD_SET( ctx->sockfd, &readfds );
@@ -1830,9 +1830,7 @@ int main(int argc, char* argv[]){
 			nextpdu = coap_peek_next( ctx );
 		}
 
-		if ( nextpdu && nextpdu->t <= now + COAP_RESOURCE_CHECK_TIME ) {
-		  /* set timeout if there is a pdu to send before our automatic
-			 timeout occurs */
+		if ( nextpdu && nextpdu->t <= now + COAP_RESOURCE_CHECK_TIME ) { 
 			tv.tv_usec = ((nextpdu->t - now) % COAP_TICKS_PER_SECOND) * 1000000 / COAP_TICKS_PER_SECOND;
 			tv.tv_sec = (nextpdu->t - now) / COAP_TICKS_PER_SECOND;
 			timeout = &tv;
@@ -1844,21 +1842,17 @@ int main(int argc, char* argv[]){
 		}
 		result = select( FD_SETSIZE, &readfds, 0, 0, timeout );
 
-		if ( result < 0 ) {     /* error */
+		if ( result < 0 ) { 
 			if (errno != EINTR)
 				perror("select");
 		}
-		else if ( result > 0 ) {  /* read from socket */
+		else if ( result > 0 ) { 
 			if ( FD_ISSET( ctx->sockfd, &readfds ) ) {
-				coap_read( ctx ); /* read received data */
-			  /* coap_dispatch( ctx );  /\* and dispatch PDUs from receivequeue *\/ */
+				coap_read( ctx ); 
 			}
-		} 
-		else {            /* timeout */
-			/* coap_check_resource_list( ctx ); */
-		}
+		}  
 	}
-	
+	*/
 	
 	/*Listen for incoming connections*/	
 	while (!quit) {
