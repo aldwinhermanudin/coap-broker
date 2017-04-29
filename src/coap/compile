@@ -4,6 +4,10 @@ EXIT_STATUS=no
 CC_EXIST=yes
 CPP_EXIST=yes
 
+LIBRARIES="-lcoap-1 -lpaho-mqtt3c -lpthread"
+INCLUDE="-I /usr/local/include/coap/"
+CXXFLAGS="-O2 -D_GNU_SOURCE -DWITH_POSIX"
+
 if [ ! -d "src" ]; then
   echo "src directory doesn't exist."
   EXIT_STATUS=yes
@@ -12,6 +16,8 @@ fi
 
 if [ ! -d "build" ]; then
   echo "build directory doesn't exist."
+  echo "creating build directory...."
+  mkdir build
   EXIT_STATUS=yes
   exit 1
 fi
@@ -52,7 +58,8 @@ if [ "$EXIT_STATUS" = "no" ] ; then
 
 		for i in *.c; do
 			echo "compiling $i"
-			gcc -ggdb `pkg-config --cflags opencv` -o `basename $i .c` $i `pkg-config --libs opencv`;
+			#gcc -ggdb `pkg-config --cflags opencv` -o `basename $i .c` $i `pkg-config --libs opencv`;
+			gcc $i $INCLUDE $LIBRARIES $CXXFLAGS -o `basename $i .c`;
 			
 			if [ -f `basename $i .c` ]; then
 				mv `basename $i .c` ../build/
