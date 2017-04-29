@@ -1757,10 +1757,6 @@ int main(int argc, char* argv[]){
 	coap_address_t   	serv_addr;
 	coap_resource_t* 	broker_resource;
 	fd_set         		readfds;
-	struct timeval tv, *timeout;
-	int result;
-	coap_tick_t now;
-	coap_queue_t *nextpdu;    
 	global_ctx			= &ctx;
 	
 	/* MQTT Client Init */
@@ -1816,43 +1812,6 @@ int main(int argc, char* argv[]){
 	/* Initialize CTRL+C Handler */	
 	signal(SIGINT, handleSIGINT);
 	/* Initialize CTRL+C Handler */
-	
-	/* while loop from coap-rd.c
-	while ( !quit ) {
-		FD_ZERO(&readfds);
-		FD_SET( ctx->sockfd, &readfds );
-
-		nextpdu = coap_peek_next( ctx );
-
-		coap_ticks(&now);
-		while ( nextpdu && nextpdu->t <= now ) {
-			coap_retransmit( ctx, coap_pop_next( ctx ) );
-			nextpdu = coap_peek_next( ctx );
-		}
-
-		if ( nextpdu && nextpdu->t <= now + COAP_RESOURCE_CHECK_TIME ) { 
-			tv.tv_usec = ((nextpdu->t - now) % COAP_TICKS_PER_SECOND) * 1000000 / COAP_TICKS_PER_SECOND;
-			tv.tv_sec = (nextpdu->t - now) / COAP_TICKS_PER_SECOND;
-			timeout = &tv;
-		} 
-		else {
-			tv.tv_usec = 0;
-			tv.tv_sec = COAP_RESOURCE_CHECK_TIME;
-			timeout = &tv;
-		}
-		result = select( FD_SETSIZE, &readfds, 0, 0, timeout );
-
-		if ( result < 0 ) { 
-			if (errno != EINTR)
-				perror("select");
-		}
-		else if ( result > 0 ) { 
-			if ( FD_ISSET( ctx->sockfd, &readfds ) ) {
-				coap_read( ctx ); 
-			}
-		}  
-	}
-	*/
 	
 	/*Listen for incoming connections*/	
 	while (!quit) {
