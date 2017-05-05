@@ -1023,6 +1023,17 @@ int calculateResourceLF(coap_resource_t* resource){
 		
 		RESOURCES_ITER((*global_ctx)->resources, r) {
 			if(!compareString(r->uri.s, broker_path)){
+				
+				/* to delete only broker resource */
+				if (strlen(r->uri.s) >= 3 ) {
+					if( r->uri.s[0] != 'p'  && r->uri.s[1] != 's' && r->uri.s[2] != '/'){
+						continue;
+					}
+				}
+				else{
+					continue;
+				}
+				
 				deleteTopic(&topicDB, r->uri.s);
 				if(mqtt_bridge){
 					MQTTClient_unsubscribe(*global_client, r->uri.s);
@@ -1894,6 +1905,17 @@ int main(int argc, char* argv[]){
     debug("Exiting Main\n");
     RESOURCES_ITER((*global_ctx)->resources, r) {
 		if(!compareString(r->uri.s, broker_path)){
+			
+			/* to delete only broker resource */
+			if (strlen(r->uri.s) >= 3 ) {
+				if( r->uri.s[0] != 'p'  && r->uri.s[1] != 's' && r->uri.s[2] != '/'){
+					continue;
+				}
+			}
+			else{
+				continue;
+			}
+			
 			deleteTopic(&topicDB, r->uri.s);
 			if(mqtt_bridge){
 				MQTTClient_unsubscribe(*global_client, r->uri.s);
