@@ -1,6 +1,7 @@
 #!/bin/sh
 
-broker_ip="rpibroker"
+#broker_ip="rpibroker"
+broker_ip="127.0.0.1"
 EXIT_STATUS=no
 if [ -z "$2" ]
   then
