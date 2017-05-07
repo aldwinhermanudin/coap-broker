@@ -11,7 +11,7 @@ if [ -z "$2" ]
   then
     echo "0.1 -- CoAP Request-er"
     echo "(c) 2017 Aldwin Hermanudin<aldwin@hermanudin.com>\n"
-    echo -e "usage: $0 [-p path] [-s node-list] [-h server-address] [-n number-of-get] [-o additional-option] [-m method-type] [-i input-data] [-T int:time:time:name]\n"
+    echo -e "usage: $0 [-p path] [-s node-list] [-h server-address] [-n number-of-get] [-o additional-option] [-m method-type] [-i input-data] [-T int:time:time:name] [-G path]\n"
     echo -e  "\t-p path\t\t\t\tCoAP resource path (default : .well-known/core)"
     echo -e  "\t-s file\t\t\t\tnode-list for multiple node"
     echo -e  "\t-h address\t\t\tCoAP server address (default: 127.0.0.1)"
@@ -19,13 +19,14 @@ if [ -z "$2" ]
     echo -e  "\t-o option\t\t\tadditional option. eta for --eta in GNU Parallel."
     echo -e  "\t-m type\t\t\t\trequest method type. get for GET Method. put for PUT method  (default: get)"
     echo -e  "\t-i text\t\t\t\tinput text for PUT Method. (default : lalalililelo) "
-    echo -e  "\t-T int:int:time:name\t\tSequentially max request, interval, interval time, logfile name.\n"
+    echo -e  "\t-T int:int:time:name\t\tAutomated CoAP Requester with GNU Parallel. Sequentially max request, interval, interval time, logfile name."
+    echo -e  "\t-G path\t\t\t\tSimple GET with ct 0. Path is path to CoAP resource. Set this option to last in your argument\n"
     echo "examples:"
     echo -e  "\t$0 -p ps/room20/gas -s node-list -h 192.168.1.9 -n 10 -o eta\n"
     exit 1
 fi
 
-while getopts ":p:s:h:n:o:m:i:T:" opt; do
+while getopts ":p:s:h:n:o:m:i:T:G:" opt; do
 	case $opt in
 		p)
 			echo -e  "Path\t\t\t: $OPTARG" >&2
@@ -95,6 +96,10 @@ while getopts ":p:s:h:n:o:m:i:T:" opt; do
 				echo "Invalid option: -$OPTARG" >&2
 				exit 1
 			fi
+			;;
+		G)
+			coap-client -m get -t 0 coap://[$server_addr]/$OPTARG
+			exit 1
 			;;
 		\?)
 			echo "Invalid option: -$OPTARG" >&2
