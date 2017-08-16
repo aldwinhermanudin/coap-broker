@@ -8,7 +8,7 @@ coap-broker is an implementation of the publish-subscriber architecture used by 
 PACKAGE CONTENTS
 ================
 
-This directory contains the source code of coap-broker. The misc directory contains experimental codes used during development stage,a library dependencies used by the coap-broker, testing script to load test the coap-broker, raspberry pi startup script to configure the raspberry pi, and previous work of related project. 
+This directory contains the source code of coap-broker. The misc directory contains experimental codes used during development stage, library dependencies used by the coap-broker, testing script to do load test on coap-broker, raspberry pi startup script to configure the raspberry pi, and previous work of related project. 
 
 
 ADDITIONAL INFORMATION
