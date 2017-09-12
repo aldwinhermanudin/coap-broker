@@ -1,5 +1,10 @@
 # coap-broker: A C implementation of the CoAP Broker REST API [(draft-ietf-core-coap-pubsub-01)](https://tools.ietf.org/html/draft-ietf-core-coap-pubsub-01)
 
+INSTALLATION
+=============
+for building, installing and additional notes see wiki.
+
+
 ABOUT COAP-BROKER
 =============
 
