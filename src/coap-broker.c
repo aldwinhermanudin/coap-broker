@@ -48,37 +48,43 @@ void topicMAMonitor( TopicDataPtr currentPtr );
 static void hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource, 
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
               coap_pdu_t *request, str *token, coap_pdu_t *response);
+
 static void hnd_put_topic(coap_context_t *ctx ,
              struct coap_resource_t *resource ,
              const coap_endpoint_t *local_interface ,
              coap_address_t *peer ,
              coap_pdu_t *request,
              str *token ,
-             coap_pdu_t *response);             
+             coap_pdu_t *response);
+             
 static void hnd_delete_topic(coap_context_t *ctx ,
                 struct coap_resource_t *resource ,
                 const coap_endpoint_t *local_interface ,
                 coap_address_t *peer ,
                 coap_pdu_t *request ,
                 str *token ,
-                coap_pdu_t *response );                 
+                coap_pdu_t *response ); 
+                
 static void hnd_post_topic(coap_context_t *ctx ,
                 struct coap_resource_t *resource ,
                 const coap_endpoint_t *local_interface ,
                 coap_address_t *peer ,
                 coap_pdu_t *request ,
                 str *token ,
-                coap_pdu_t *response );             
+                coap_pdu_t *response );
+             
 static void hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource, 
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
-              coap_pdu_t *request, str *token, coap_pdu_t *response);              
+              coap_pdu_t *request, str *token, coap_pdu_t *response);
+              
 static void hnd_post_broker(coap_context_t *ctx,
              struct coap_resource_t *resource,
              const coap_endpoint_t *local_interface,
              coap_address_t *peer,
              coap_pdu_t *request,
              str *token,
-             coap_pdu_t *response);             
+             coap_pdu_t *response);
+             
 static void hnd_delete_broker(coap_context_t *ctx,
              struct coap_resource_t *resource,
              const coap_endpoint_t *local_interface,
@@ -93,11 +99,10 @@ int main(int argc, char* argv[]){
 	coap_address_t   	serv_addr;
 	coap_resource_t* 	broker_resource;
 	fd_set         		readfds;
-	int 				opt;
 	global_ctx			= &ctx;
+	int opt;
 	coap_log_t log_level = LOG_WARNING;
 	
-	/* Parse program argument */
 	while ((opt = getopt(argc, argv, "e:v:")) != -1) {
 		switch (opt) {
 			case 'e' :
@@ -180,7 +185,6 @@ int main(int argc, char* argv[]){
 	/* Initialize CTRL+C Handler */
 	
 	/*Listen for incoming connections*/	
-	/* libcoap main loop */
 	while (!quit) {
         FD_ZERO(&readfds);
         FD_SET(ctx->sockfd, &readfds );
@@ -198,7 +202,7 @@ int main(int argc, char* argv[]){
         topicMAMonitor(topicDB);
     }
     
-    /* Memory clean-up */
+    /* clean-up */
     debug("Exiting Main\n");
     RESOURCES_ITER((*global_ctx)->resources, r) {
 		if(!compareString(r->uri.s, broker_path)){
@@ -1028,6 +1032,7 @@ static void hnd_post_topic(coap_context_t *ctx ,
 	/* malformed request */
 } 
 
+
 void topicDataMAMonitor( TopicDataPtr currentPtr ){
 	
 	time_t master_time = time(NULL);
@@ -1145,7 +1150,41 @@ void topicMAMonitor( TopicDataPtr currentPtr ){
 	}
 }
 
+static void	handleSIGINT(int signum) {
+	quit = 1;
+	
+	RESOURCES_ITER((*global_ctx)->resources, r) {
+		if(!compareString(r->uri.s, broker_path)){
+			
+			/* to delete only broker resource */
+			if (strlen(r->uri.s) >= 3 ) {
+				if( r->uri.s[0] != 'p'  && r->uri.s[1] != 's' && r->uri.s[2] != '/'){
+					continue;
+				}
+			}
+			else{
+				continue;
+			}
+			
+			deleteTopic(&topicDB, r->uri.s);
+			if(mqtt_bridge){
+				MQTTClient_unsubscribe(*global_client, r->uri.s);
+			}
+			RESOURCES_DELETE((*global_ctx)->resources, r);
+			coapFreeResource(r);
+		}
+	}	 
+	coap_free_context((*global_ctx)); 
+	
+	if(mqtt_bridge){ 
+		MQTTClient_disconnect((*global_client), 10000);
+		MQTTClient_destroy(global_client);
+	}
+	exit(0);
+}
+
 void delivered(void *context, MQTTClient_deliveryToken dt){
+
 	debug("Message with token value %d delivery confirmed\n", dt);
 	deliveredtoken = dt;
 }
@@ -1153,7 +1192,7 @@ void delivered(void *context, MQTTClient_deliveryToken dt){
 int msgarrvd(void *context, char *topicName, int topicLen, MQTTClient_message *message){
 	int i;
 	char* payloadptr;
-		
+	
 	RESOURCES_ITER(((*global_ctx))->resources, r) {
 		if(compareString(r->uri.s, topicName)){
 			TopicDataPtr 	temp_data = cloneTopic(&topicDB,r->uri.s);
@@ -1181,41 +1220,10 @@ int msgarrvd(void *context, char *topicName, int topicLen, MQTTClient_message *m
 }
 
 void connlost(void *context, char *cause){
+	
 	debug("\nConnection lost cause: %s\n", cause);
 }
 
-static void	handleSIGINT(int signum) {
-		quit = 1;
-		
-		RESOURCES_ITER((*global_ctx)->resources, r) {
-			if(!compareString(r->uri.s, broker_path)){
-				
-				/* to delete only broker resource */
-				if (strlen(r->uri.s) >= 3 ) {
-					if( r->uri.s[0] != 'p'  && r->uri.s[1] != 's' && r->uri.s[2] != '/'){
-						continue;
-					}
-				}
-				else{
-					continue;
-				}
-				
-				deleteTopic(&topicDB, r->uri.s);
-				if(mqtt_bridge){
-					MQTTClient_unsubscribe(*global_client, r->uri.s);
-				}
-				RESOURCES_DELETE((*global_ctx)->resources, r);
-				coapFreeResource(r);
-			}
-		}	 
-		coap_free_context((*global_ctx)); 
-		if(mqtt_bridge){ 
-			MQTTClient_disconnect((*global_client), 10000);
-			MQTTClient_destroy(global_client);
-		}
-		exit(0);
-}
-	
 static void usage( const char *program, const char *version) {
 	const char *p;
 
