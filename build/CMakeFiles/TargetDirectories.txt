@@ -1,3 +1,0 @@
-/home/aldwinakbar/Dropbox/Projects/campus/personal/coap-broker/build/CMakeFiles/edit_cache.dir
-/home/aldwinakbar/Dropbox/Projects/campus/personal/coap-broker/build/CMakeFiles/rebuild_cache.dir
-/home/aldwinakbar/Dropbox/Projects/campus/personal/coap-broker/build/CMakeFiles/CoAPBroker.dir
