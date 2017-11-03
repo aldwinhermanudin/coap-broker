@@ -49,7 +49,7 @@ public:
     void update_topic(time_t topic_ma);
     int delete_topic_data();
 
-    void print_topic();
+    std::string print_topic();
 
 
 
@@ -74,7 +74,7 @@ public:
     bool delete_topic(std::string path);
     int topic_exist( std::string path );
     void clean_db();
-    void print_db();
+    std::string print_db();
 }; 
 
 

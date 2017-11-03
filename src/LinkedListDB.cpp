@@ -116,17 +116,13 @@ int	string_equal(std::string a, std::string b){
         update_topic(this->path, std::string(), this->topic_ma, 0);
     } 
 
-    void TopicData::print_topic(){
+    std::string TopicData::print_topic(){
         node_r_lock();
         data_r_lock();
-
-        std::cout << path << " ";
-        std::cout << data << " ";
-        std::cout << topic_ma << " ";
-        std::cout << data_ma << " ";
-
+        std::string temp = path + " " + data + " " + std::to_string(topic_ma) + " " + std::to_string(data_ma);
         data_unlock();
         node_unlock();
+        return temp;
 	} 
 
 	TopicDB::TopicDB(){}
@@ -377,22 +373,22 @@ int	string_equal(std::string a, std::string b){
             tempPtr->node_lock_destroy();
         }
     } 
-    void TopicDB::print_db(){ 
+    std::string TopicDB::print_db(){ 
         TopicDataPtr currentPtr = sPtr;
+        std::string temp;
         if ( currentPtr == nullptr ) {
-            std::cout <<"List is empty.\n\n";
+            temp = "List is empty.\n\n";
         } /* end if */
         else { 
-            std::cout << "The list is:\n" ;
+            temp = "The list is:\n" ;
 
             /* while not the end of the list */
-            while ( currentPtr != NULL ) { 
+            while ( currentPtr != nullptr ) { 
 
                 currentPtr->node_r_lock();
                 currentPtr->data_r_lock();
 
-                currentPtr->print_topic();
-                std::cout << "--> ";
+                temp += currentPtr->print_topic() + "--> ";
 
                 TopicDataPtr previousPtr = currentPtr;
                 currentPtr = currentPtr->nextPtr;   
@@ -401,8 +397,9 @@ int	string_equal(std::string a, std::string b){
                 previousPtr->node_unlock();
             } /* end while */
 
-            std::cout << "NULL\n\n";
+            temp += "NULL\n\n";
         } /* end else */
+        return temp;
     }
 
 
