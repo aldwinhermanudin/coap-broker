@@ -1,8 +1,10 @@
 #include "CoAPRD.hpp"
 
-rd_t *resources = NULL;
+EString CoAPRD::resource_name;
+unsigned char *CoAPRD::RD_ROOT_STR;
+size_t CoAPRD::RD_ROOT_SIZE;
 
-rd_t *rd_new(void) {
+rd_t *CoAPRD::rd_new(void) {
   rd_t *rd;
   rd = (rd_t *)coap_malloc(sizeof(rd_t));
   if (rd)
@@ -11,14 +13,154 @@ rd_t *rd_new(void) {
   return rd;
 }
 
-void rd_delete(rd_t *rd) {
+void CoAPRD::rd_delete(rd_t *rd) {
   if (rd) {
     coap_free(rd->data.s);
     coap_free(rd);
   }
 }
 
-void hnd_get_resource(coap_context_t  *ctx ,
+rd_t *CoAPRD::make_rd(coap_address_t *peer , coap_pdu_t *pdu) {
+  rd_t *rd;
+  unsigned char *data;
+  coap_opt_iterator_t opt_iter;
+  coap_opt_t *etag;
+
+  rd = rd_new();
+
+  if (!rd) {
+    debug("hnd_get_rd: cannot allocate storage for rd\n");
+    return NULL;
+  }
+
+  if (coap_get_data(pdu, &rd->data.length, &data)) {
+    rd->data.s = (unsigned char *)coap_malloc(rd->data.length);
+    if (!rd->data.s) {
+      debug("hnd_get_rd: cannot allocate storage for rd->data\n");
+      rd_delete(rd);
+      return NULL;
+    }
+    memcpy(rd->data.s, data, rd->data.length);
+  }
+
+  etag = coap_check_option(pdu, COAP_OPTION_ETAG, &opt_iter);
+  if (etag) {
+    rd->etag_len = min(COAP_OPT_LENGTH(etag), sizeof(rd->etag));
+    memcpy(rd->etag, COAP_OPT_VALUE(etag), rd->etag_len);
+  }
+
+  return rd;
+}
+
+rd_t *CoAPRD::resources = NULL;
+
+void CoAPRD::add_source_address(struct coap_resource_t *resource,
+                   coap_address_t *peer) {
+#define BUFSIZE 64
+  char *buf;
+  size_t n = 1;
+
+  buf = (char *)coap_malloc(BUFSIZE);
+  if (!buf)
+    return;
+
+  buf[0] = '"';
+
+  switch(peer->addr.sa.sa_family) {
+
+  case AF_INET:
+    /* FIXME */
+    break;
+
+  case AF_INET6:
+    n += snprintf(buf + n, BUFSIZE - n,
+      "[%02x%02x:%02x%02x:%02x%02x:%02x%02x" \
+      ":%02x%02x:%02x%02x:%02x%02x:%02x%02x]",
+      peer->addr.sin6.sin6_addr.s6_addr[0],
+      peer->addr.sin6.sin6_addr.s6_addr[1],
+      peer->addr.sin6.sin6_addr.s6_addr[2],
+      peer->addr.sin6.sin6_addr.s6_addr[3],
+      peer->addr.sin6.sin6_addr.s6_addr[4],
+      peer->addr.sin6.sin6_addr.s6_addr[5],
+      peer->addr.sin6.sin6_addr.s6_addr[6],
+      peer->addr.sin6.sin6_addr.s6_addr[7],
+      peer->addr.sin6.sin6_addr.s6_addr[8],
+      peer->addr.sin6.sin6_addr.s6_addr[9],
+      peer->addr.sin6.sin6_addr.s6_addr[10],
+      peer->addr.sin6.sin6_addr.s6_addr[11],
+      peer->addr.sin6.sin6_addr.s6_addr[12],
+      peer->addr.sin6.sin6_addr.s6_addr[13],
+      peer->addr.sin6.sin6_addr.s6_addr[14],
+      peer->addr.sin6.sin6_addr.s6_addr[15]);
+
+    if (peer->addr.sin6.sin6_port != htons(COAP_DEFAULT_PORT)) {
+      n +=
+      snprintf(buf + n, BUFSIZE - n, ":%d", peer->addr.sin6.sin6_port);
+    }
+    break;
+    default:
+    ;
+  }
+
+  if (n < BUFSIZE)
+    buf[n++] = '"';
+
+  coap_add_attr(resource,
+                (unsigned char *)"A",
+                1,
+                (unsigned char *)buf,
+                n,
+                COAP_ATTR_FLAGS_RELEASE_VALUE);
+#undef BUFSIZE
+}
+
+int CoAPRD::parse_param(unsigned char *search,
+            size_t search_len,
+            unsigned char *data,
+            size_t data_len,
+            str *result) {
+
+  if (result)
+    memset(result, 0, sizeof(str));
+
+  if (!search_len)
+    return 0;
+
+  while (search_len <= data_len) {
+
+    /* handle parameter if found */
+    if (memcmp(search, data, search_len) == 0) {
+      data += search_len;
+      data_len -= search_len;
+
+      /* key is only valid if we are at end of string or delimiter follows */
+      if (!data_len || *data == '=' || *data == '&') {
+        while (data_len && *data != '=') {
+          ++data; --data_len;
+        }
+
+        if (data_len > 1 && result) {
+          /* value begins after '=' */
+
+          result->s = ++data;
+          while (--data_len && *data != '&') {
+            ++data; result->length++;
+          }
+        }
+
+        return 1;
+      }
+    }
+
+    /* otherwise proceed to next */
+    while (--data_len && *data++ != '&')
+      ;
+  }
+
+  return 0;
+}
+
+void CoAPRD::hnd_get_resource(coap_context_t  *ctx ,
                  struct coap_resource_t *resource,
                  const coap_endpoint_t *local_interface ,
                  coap_address_t *peer ,
@@ -45,7 +187,7 @@ void hnd_get_resource(coap_context_t  *ctx ,
     coap_add_data(response, rd->data.length, rd->data.s);
 }
 
-void hnd_put_resource(coap_context_t  *ctx ,
+void CoAPRD::hnd_put_resource(coap_context_t  *ctx ,
                  struct coap_resource_t *resource ,
                  const coap_endpoint_t *local_interface ,
                  coap_address_t *peer ,
@@ -122,7 +264,7 @@ void hnd_put_resource(coap_context_t  *ctx ,
 #endif
 }
 
-void hnd_delete_resource(coap_context_t  *ctx,
+void CoAPRD::hnd_delete_resource(coap_context_t  *ctx,
                     struct coap_resource_t *resource,
                     const coap_endpoint_t *local_interface ,
                     coap_address_t *peer ,
@@ -143,167 +285,28 @@ void hnd_delete_resource(coap_context_t  *ctx,
   response->hdr->code = COAP_RESPONSE_CODE(202);
 }
 
-void hnd_get_rd(coap_context_t  *ctx ,
-           struct coap_resource_t *resource ,
-           const coap_endpoint_t *local_interface ,
-           coap_address_t *peer ,
-           coap_pdu_t *request ,
-           str *token ,
-           coap_pdu_t *response) {
-  unsigned char buf[3];
+void CoAPRD::hnd_get_rd(coap_context_t  *ctx ,
+                        struct coap_resource_t *resource ,
+                        const coap_endpoint_t *local_interface ,
+                        coap_address_t *peer ,
+                        coap_pdu_t *request ,
+                        str *token ,
+                        coap_pdu_t *response) {
+    unsigned char buf[3];
 
-  response->hdr->code = COAP_RESPONSE_CODE(205);
+    response->hdr->code = COAP_RESPONSE_CODE(205);
 
-  coap_add_option(response,
-                  COAP_OPTION_CONTENT_TYPE,
-                  coap_encode_var_bytes(buf,
-                                        COAP_MEDIATYPE_APPLICATION_LINK_FORMAT),
-                                        buf);
+    coap_add_option(response,
+                    COAP_OPTION_CONTENT_TYPE,
+                    coap_encode_var_bytes(buf,
+                    COAP_MEDIATYPE_APPLICATION_LINK_FORMAT), buf);
 
-  coap_add_option(response,
-                  COAP_OPTION_MAXAGE,
-                  coap_encode_var_bytes(buf, 0x2ffff), buf);
+    coap_add_option(response,
+                    COAP_OPTION_MAXAGE,
+                    coap_encode_var_bytes(buf, 0x2ffff), buf);
 }
 
-int parse_param(unsigned char *search,
-            size_t search_len,
-            unsigned char *data,
-            size_t data_len,
-            str *result) {
-
-  if (result)
-    memset(result, 0, sizeof(str));
-
-  if (!search_len)
-    return 0;
-
-  while (search_len <= data_len) {
-
-    /* handle parameter if found */
-    if (memcmp(search, data, search_len) == 0) {
-      data += search_len;
-      data_len -= search_len;
-
-      /* key is only valid if we are at end of string or delimiter follows */
-      if (!data_len || *data == '=' || *data == '&') {
-        while (data_len && *data != '=') {
-          ++data; --data_len;
-        }
-
-        if (data_len > 1 && result) {
-          /* value begins after '=' */
-
-          result->s = ++data;
-          while (--data_len && *data != '&') {
-            ++data; result->length++;
-          }
-        }
-
-        return 1;
-      }
-    }
-
-    /* otherwise proceed to next */
-    while (--data_len && *data++ != '&')
-      ;
-  }
-
-  return 0;
-}
-
-void add_source_address(struct coap_resource_t *resource,
-                   coap_address_t *peer) {
-#define BUFSIZE 64
-  char *buf;
-  size_t n = 1;
-
-  buf = (char *)coap_malloc(BUFSIZE);
-  if (!buf)
-    return;
-
-  buf[0] = '"';
-
-  switch(peer->addr.sa.sa_family) {
-
-  case AF_INET:
-    /* FIXME */
-    break;
-
-  case AF_INET6:
-    n += snprintf(buf + n, BUFSIZE - n,
-      "[%02x%02x:%02x%02x:%02x%02x:%02x%02x" \
-      ":%02x%02x:%02x%02x:%02x%02x:%02x%02x]",
-      peer->addr.sin6.sin6_addr.s6_addr[0],
-      peer->addr.sin6.sin6_addr.s6_addr[1],
-      peer->addr.sin6.sin6_addr.s6_addr[2],
-      peer->addr.sin6.sin6_addr.s6_addr[3],
-      peer->addr.sin6.sin6_addr.s6_addr[4],
-      peer->addr.sin6.sin6_addr.s6_addr[5],
-      peer->addr.sin6.sin6_addr.s6_addr[6],
-      peer->addr.sin6.sin6_addr.s6_addr[7],
-      peer->addr.sin6.sin6_addr.s6_addr[8],
-      peer->addr.sin6.sin6_addr.s6_addr[9],
-      peer->addr.sin6.sin6_addr.s6_addr[10],
-      peer->addr.sin6.sin6_addr.s6_addr[11],
-      peer->addr.sin6.sin6_addr.s6_addr[12],
-      peer->addr.sin6.sin6_addr.s6_addr[13],
-      peer->addr.sin6.sin6_addr.s6_addr[14],
-      peer->addr.sin6.sin6_addr.s6_addr[15]);
-
-    if (peer->addr.sin6.sin6_port != htons(COAP_DEFAULT_PORT)) {
-      n +=
-      snprintf(buf + n, BUFSIZE - n, ":%d", peer->addr.sin6.sin6_port);
-    }
-    break;
-    default:
-    ;
-  }
-
-  if (n < BUFSIZE)
-    buf[n++] = '"';
-
-  coap_add_attr(resource,
-                (unsigned char *)"A",
-                1,
-                (unsigned char *)buf,
-                n,
-                COAP_ATTR_FLAGS_RELEASE_VALUE);
-#undef BUFSIZE
-}
-
-rd_t *make_rd(coap_address_t *peer , coap_pdu_t *pdu) {
-  rd_t *rd;
-  unsigned char *data;
-  coap_opt_iterator_t opt_iter;
-  coap_opt_t *etag;
-
-  rd = rd_new();
-
-  if (!rd) {
-    debug("hnd_get_rd: cannot allocate storage for rd\n");
-    return NULL;
-  }
-
-  if (coap_get_data(pdu, &rd->data.length, &data)) {
-    rd->data.s = (unsigned char *)coap_malloc(rd->data.length);
-    if (!rd->data.s) {
-      debug("hnd_get_rd: cannot allocate storage for rd->data\n");
-      rd_delete(rd);
-      return NULL;
-    }
-    memcpy(rd->data.s, data, rd->data.length);
-  }
-
-  etag = coap_check_option(pdu, COAP_OPTION_ETAG, &opt_iter);
-  if (etag) {
-    rd->etag_len = min(COAP_OPT_LENGTH(etag), sizeof(rd->etag));
-    memcpy(rd->etag, COAP_OPT_VALUE(etag), rd->etag_len);
-  }
-
-  return rd;
-}
-
-void hnd_post_rd(coap_context_t  *ctx,
+void CoAPRD::hnd_post_rd(coap_context_t  *ctx,
             struct coap_resource_t *resource ,
             const coap_endpoint_t *local_interface ,
             coap_address_t *peer,
@@ -454,17 +457,14 @@ void hnd_post_rd(coap_context_t  *ctx,
   }
 }
 
-void init_rd_resources(coap_context_t *ctx) {
-  coap_resource_t *r;
-
-  r = coap_resource_init(RD_ROOT_STR, RD_ROOT_SIZE, 0);
-  coap_register_handler(r, COAP_REQUEST_GET, hnd_get_rd);
-  coap_register_handler(r, COAP_REQUEST_POST, hnd_post_rd);
-
-  coap_add_attr(r, (unsigned char *)"ct", 2, (unsigned char *)"40", 2, 0);
-  coap_add_attr(r, (unsigned char *)"rt", 2, (unsigned char *)"\"core.rd\"", 9, 0);
-  coap_add_attr(r, (unsigned char *)"ins", 2, (unsigned char *)"\"default\"", 9, 0);
-
-  coap_add_resource(ctx, r);
+CoAPRD::CoAPRD( EString name) : CoAPResource(name) {
+  resource_name = name;
+  RD_ROOT_SIZE = resource_name.get_length();
+  RD_ROOT_STR  = resource_name.get_uchar().get();
+  register_handler(COAP_REQUEST_GET, CoAPRD::hnd_get_rd);
+  register_handler(COAP_REQUEST_POST, hnd_post_rd); 
+  add_attribute(EString("ct"), EString("40"));
+  add_attribute(EString("rt"), EString("\"core.rd\""));
+  add_attribute(EString("ins"), EString("\"default\""));
 
 }
