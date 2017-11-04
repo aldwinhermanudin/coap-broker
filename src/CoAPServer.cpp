@@ -25,7 +25,7 @@
             else return 1;
         }
     
-        coap_context_t* CoAPServer::get_context(){
+        coap_context_t*& CoAPServer::get_context(){
             return ctx;
         }
     

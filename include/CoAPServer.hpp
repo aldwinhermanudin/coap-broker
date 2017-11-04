@@ -16,7 +16,7 @@ class CoAPServer {
         void add_resource(coap_resource_t *resource);
         void add_resource(CoAPResource &resource);
         bool is_avaiable();
-        coap_context_t* get_context();
+        coap_context_t*& get_context();
         void set_log_level(coap_log_t type);
         void run();
         ~CoAPServer();

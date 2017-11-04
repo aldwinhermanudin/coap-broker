@@ -92,7 +92,7 @@ int	string_equal(std::string a, std::string b){
         return safe_copy(data_ma);
     }
 
-    int TopicData::update_topic(std::string path, std::string data, time_t topic_ma, time_t data_ma)
+    bool TopicData::update_topic(std::string path, std::string data, time_t topic_ma, time_t data_ma)
     {  
         node_r_lock();
         data_w_lock();
@@ -104,12 +104,12 @@ int	string_equal(std::string a, std::string b){
         node_unlock();
         return 1;
     }  
-    void TopicData::update_topic(std::string data, time_t data_ma){
-        update_topic(this->path, data, this->topic_ma, data_ma);
+    bool TopicData::update_topic(std::string data, time_t data_ma){
+        return update_topic(this->path, data, this->topic_ma, data_ma);
     } 
     
-    void TopicData::update_topic(time_t topic_ma){			
-        update_topic(this->path, this->data, topic_ma, this->data_ma);
+    bool TopicData::update_topic(time_t topic_ma){			
+        return update_topic(this->path, this->data, topic_ma, this->data_ma);
     }
 
     int TopicData::delete_topic_data(){ 

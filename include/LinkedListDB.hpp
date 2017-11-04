@@ -44,9 +44,9 @@ public:
     std::string copy_data();
     time_t copy_topic_ma();
     time_t copy_data_ma();
-    int update_topic(std::string path, std::string data, time_t topic_ma, time_t data_ma);
-    void update_topic(std::string data, time_t data_ma);
-    void update_topic(time_t topic_ma);
+    bool update_topic(std::string path, std::string data, time_t topic_ma, time_t data_ma);
+    bool update_topic(std::string data, time_t data_ma);
+    bool update_topic(time_t topic_ma);
     int delete_topic_data();
 
     std::string print_topic();

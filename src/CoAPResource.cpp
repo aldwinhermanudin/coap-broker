@@ -14,6 +14,6 @@
                           value.get_length(), 0);
         }
     
-        coap_resource_t* CoAPResource::get_resource(){
+        coap_resource_t*& CoAPResource::get_resource(){
             return resource;
         }
