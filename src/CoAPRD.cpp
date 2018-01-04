@@ -1,6 +1,6 @@
 #include "CoAPRD.hpp"
 
-EString CoAPRD::resource_name;
+coap::UString CoAPRD::resource_name;
 unsigned char *CoAPRD::RD_ROOT_STR;
 size_t CoAPRD::RD_ROOT_SIZE;
 
@@ -457,14 +457,14 @@ void CoAPRD::hnd_post_rd(coap_context_t  *ctx,
   }
 }
 
-CoAPRD::CoAPRD( EString name) : CoAPResource(name) {
+CoAPRD::CoAPRD( coap::UString name) : CoAPResource(name) {
   resource_name = name;
   RD_ROOT_SIZE = resource_name.get_length();
-  RD_ROOT_STR  = resource_name.get_uchar().get();
+  RD_ROOT_STR  = resource_name.copy_uchar_unsafe();
   register_handler(COAP_REQUEST_GET, CoAPRD::hnd_get_rd);
   register_handler(COAP_REQUEST_POST, hnd_post_rd); 
-  add_attribute(EString("ct"), EString("40"));
-  add_attribute(EString("rt"), EString("\"core.rd\""));
-  add_attribute(EString("ins"), EString("\"default\""));
+  add_attribute(coap::UString("ct"), coap::UString("40"));
+  add_attribute(coap::UString("rt"), coap::UString("\"core.rd\""));
+  add_attribute(coap::UString("ins"), coap::UString("\"default\""));
 
 }

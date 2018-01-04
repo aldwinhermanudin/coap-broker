@@ -2,7 +2,7 @@
 #define COAP_RD_HPP
 
 #include <coap.h>  
-#include "EString.hpp"
+#include "UString.hpp"
 #include "CoAPResource.hpp"
 #include "CoAPServer.hpp"
 
@@ -24,7 +24,7 @@ class CoAPRD : public CoAPResource{
 
 private:
 
-  static EString resource_name;
+  static coap::UString resource_name;
   static unsigned char *RD_ROOT_STR;
   static size_t RD_ROOT_SIZE;
   static rd_t * rd_new(void);
@@ -78,7 +78,7 @@ private:
 
 
 public:
-   CoAPRD( EString name);
+   CoAPRD( coap::UString name);
 
 };
 #endif 
