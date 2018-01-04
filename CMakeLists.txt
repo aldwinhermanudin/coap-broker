@@ -18,13 +18,3 @@ target_link_libraries(CoAPBroker
    pthread
  ) 
 set_property(TARGET CoAPBroker PROPERTY C_STANDARD 99)
-
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_executable(CoAPBrokerCPP src/coap-broker.cpp src/CoAPRD.cpp src/LinkedListDB.cpp src/LinkFormatParser.cpp src/LibcoapMod.cpp src/EString.cpp src/CoAPServer.cpp src/CoAPResource.cpp src/CoAPBroker.cpp)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I /usr/local/include/coap/ -lcoap-1 -lpaho-mqtt3c -lpthread -O2 -D_GNU_SOURCE -DWITH_POSIX")
-target_link_libraries(CoAPBrokerCPP
-  coap-1
-  paho-mqtt3c
-  pthread
-) 
