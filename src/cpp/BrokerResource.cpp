@@ -1,29 +1,152 @@
-#include "CoAPBroker.hpp"
+#include "BrokerResource.hpp"
 
-coap_context_t**  	CoAPBroker::global_ctx;
-TopicDB     CoAPBroker::topic_db;
-MQTTClient* CoAPBroker::global_client;
-bool         CoAPBroker::mqtt_bridge = false;
-time_t      CoAPBroker::earliest_topic_max_age = LONG_MAX;
-time_t		CoAPBroker::earliest_data_max_age = LONG_MAX;
-volatile    MQTTClient_deliveryToken CoAPBroker::deliveredtoken;
+namespace coap{
 
-CoAPBroker::CoAPBroker(EString name, CoAPServer &server) : CoAPResource(name){
-	global_ctx = &(server.get_context());
+	namespace broker{
+		namespace handler{
+			void tae_handler(ProtocolDataUnit response_pdu){
+			response_pdu.add_response_data(COAP_RESPONSE_CODE(403)); 
+			return ;
+			}
+
+			void mr_handler(ProtocolDataUnit response_pdu){
+				response_pdu.add_response_data(COAP_RESPONSE_CODE(400));
+				return ; 
+			}
+
+			void uscf_handler(ProtocolDataUnit response_pdu){
+				response_pdu.add_response_data(COAP_RESPONSE_CODE(406));
+				return ; 
+			}
+
+			bool has_only_digits(const std::string s){
+				return s.find_first_not_of( "0123456789" ) == std::string::npos;
+			}
+
+			namespace post{
+				time_t abs_ma(OptionList option_data){
+
+					time_t opt_topic_ma = 0;
+					if (option_data.type_exist(COAP_OPTION_MAXAGE)) {
+						/* decode Max-Age Option */
+						opt_topic_ma = option_data.get_option(COAP_OPTION_MAXAGE).decode_value();
+								
+						/* if max-age must have a value of 1 or above 
+						* if below 1 set topic max-age to 0 (infinite max-age )
+						* else will set topic max-age to ( decode max-age + current time ) */
+						if(opt_topic_ma < 1) {  
+							return 0;
+						}
+						else{
+							return time(NULL) + opt_topic_ma;
+						} 
+					}
+
+					return 0;
+					debug("topic max-age : %ld\n",opt_topic_ma);
+				}
+
+				void s_handler(Server broker_ctx, LinkFormat lf_data, ProtocolDataUnit response_pdu, time_t abs_topic_ma){
+
+					Resource subtopic_resource(lf_data, COAP_RESOURCE_FLAGS_RELEASE_URI);
+					subtopic_resource.register_handler(COAP_REQUEST_GET, BrokerResource::hnd_get_topic);
+					subtopic_resource.register_handler(COAP_REQUEST_POST, BrokerResource::hnd_post_topic);
+					subtopic_resource.register_handler(COAP_REQUEST_PUT, BrokerResource::hnd_put_topic);
+					subtopic_resource.register_handler(COAP_REQUEST_DELETE, BrokerResource::hnd_delete_topic);
+					subtopic_resource.set_observable(true);
+
+					broker_ctx.add_resource(subtopic_resource);
+					Option location(COAP_OPTION_LOCATION_PATH, lf_data.get_path());
+					response_pdu.add_option(location);
+					
+					std::cout << "Resource name : " << subtopic_resource.get_resource()->uri.s << std::endl;
+					std::cout << "Resource name size : " << subtopic_resource.get_resource()->uri.length << std::endl;
+
+					BrokerResource::topic_db.add_topic(std::string(lf_data.get_path().get_string()), abs_topic_ma);
+					response_pdu.add_response_data(COAP_RESPONSE_CODE(201)); 
+					return ; 
+					
+				}
+
+				bool is_ct_valid(ProtocolDataUnit request, unsigned short type){
+					
+					OptionList req_opt = request.get_option();
+					if(req_opt.type_exist(COAP_OPTION_CONTENT_TYPE)) {
+						
+						int ct_value = req_opt.get_option(COAP_OPTION_CONTENT_TYPE).decode_value();
+						if (ct_value == type) return true;
+						else return false;
+					}
+					else{
+						return false;
+					}
+					
+				}
+
+				bool is_mr(ProtocolDataUnit request, LinkFormat lf_data){
+					
+					if(is_ct_valid(request, COAP_MEDIATYPE_APPLICATION_LINK_FORMAT)){
+						if(lf_data.is_attribute_exist(UString("ct"))){
+							return false;
+						}
+					}
+
+					return true;
+				}
+
+
+				bool is_uscf(LinkFormat lf_data){
+					/* search for ct attribute in the new_resource created by parseLinkFormat*/
+					//coap_attr_t* new_resource_attr = coap_find_attr(new_resource,(const unsigned char*) "ct", 2);
+					Attribute content_type = lf_data.get_attribute(UString("ct"));
+					
+					/* check ct value, by using isdigit() and iterate to every char in new_resource ct attribute */
+					if(has_only_digits(content_type.get_value().get_string())){
+						int ct_value = std::stoi(content_type.get_value().get_string());
+						if(ct_value >= 0 && ct_value <= 65535){ 
+							return false;	/* jump to "Unsupported content format for topic" handler */
+						}
+					}
+					return true;	
+				}
+
+				bool is_tae(Server broker_ctx, LinkFormat lf_data){
+					if(broker_ctx.is_resource_exist(lf_data.get_path())){
+						return true;
+					}
+					return false;
+				}
+			}
+		}
+		namespace sub{
+			namespace handler{
+				namespace put{
+					
+				}
+			}
+		}
+	}
+
+
+TopicDB     BrokerResource::topic_db;
+time_t      BrokerResource::earliest_topic_max_age = LONG_MAX;
+time_t		BrokerResource::earliest_data_max_age = LONG_MAX;
+
+BrokerResource::BrokerResource(coap::UString name) : Resource(name, COAP_RESOURCE_FLAGS_RELEASE_URI){
 	register_handler(COAP_REQUEST_GET, hnd_get_broker);
 	register_handler(COAP_REQUEST_POST, hnd_post_broker);
-	add_attribute(EString("ct"), EString("40"));
-	add_attribute(EString("rt"), EString("\"core.ps\""));
+	add_attribute(Attribute(coap::UString("ct"), coap::UString("40"),0));
+	add_attribute(Attribute(coap::UString("rt"), coap::UString("\"core.ps\""),0));
 }
 
-int	CoAPBroker::compareString(char* a, char* b){
+int	BrokerResource::compareString(char* a, char* b){
 	if (a == NULL || b == NULL) return 0;
 	if (strcmp(a,b) == 0)	return 1;
 	else return 0;
 }
 
 void
-CoAPBroker::hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource, 
+BrokerResource::hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource, 
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
               coap_pdu_t *request, str *token, coap_pdu_t *response) 
 {	
@@ -165,185 +288,71 @@ CoAPBroker::hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *resource
 
 
 void
-CoAPBroker::hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource, 
+BrokerResource::hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource, 
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
               coap_pdu_t *request, str *token, coap_pdu_t *response) 
 {
+	//coap::HandlerData handler_data(ctx, resource, local_interface, peer, request, token, response);
+	coap::Server broker_ctx(ctx);
+	coap::Resource parent_resource(resource);
 
-	coap_resource_t *new_resource = NULL;
-		
 	/* declare a safe variable for data */
-	size_t size;
-    unsigned char *data;
-    unsigned char *data_safe;
-	(void)coap_get_data(request, &size, &data);
-	data_safe = (unsigned char*) coap_malloc(sizeof(char)*(size+2));
-	snprintf((char*)data_safe,size+1, "%s", data);
+	ProtocolDataUnit request_pdu(request);
+	ProtocolDataUnit response_pdu(response);
+	UString request_payload;
+	request_pdu.get_data(request_payload);
 	/* declare a safe variable for data */
 	
 	/* parse payload */
-	int status = parseLinkFormat((char*)data_safe,resource, &new_resource);
+	LinkFormat lf_data(request_payload, COAP_ATTR_FLAGS_RELEASE_NAME | COAP_ATTR_FLAGS_RELEASE_VALUE); 
+	lf_data.set_path(UString(parent_resource.get_name().get_string() + std::string("/") + std::string(lf_data.get_path().get_string())));
+
+	int status = lf_data.is_valid();
 	debug("Parser status : %d\n", status);
-	/* parse payload */
-	
-	/* free the safe variable for data */
-	coap_free(data_safe);
-	/* free the safe variable for data */
-	
-	/* Iterator to get max_age value */
-	time_t opt_topic_ma = 0;
-	time_t abs_topic_ma = 0;
-	int ma_opt_status = 0;
-
-	int ct_opt_status = 0;	
-	int ct_opt_val_integer = -1;
-
-	coap_opt_t *option;
-	coap_opt_iterator_t opt_iter; 
-	coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL);
-	while ((option = coap_option_next(&opt_iter))) {
 		
-		if (opt_iter.type == COAP_OPTION_CONTENT_TYPE && !ct_opt_status) { // !ct_opt_status means only take the first occurence of that option
-			ct_opt_status = 1;
-			ct_opt_val_integer =  coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option)); 
-		}
-		/* search for Max-Age Option field */
-	   if (opt_iter.type == COAP_OPTION_MAXAGE && !ma_opt_status) {
-			ma_opt_status = 1;  
-			/* decode Max-Age Option */
-			opt_topic_ma = coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option)); 
-				
-			/* if max-age must have a value of 1 or above 
-			 * if below 1 set topic max-age to 0 (infinite max-age )
-			 * else will set topic max-age to ( decode max-age + current time ) */
-			if(opt_topic_ma < 1) {  
-				abs_topic_ma = 0;
-			}
-			else{
-				abs_topic_ma = time(NULL) + opt_topic_ma;
-			}
-	   }
-	   if (ct_opt_status && ma_opt_status) { break;}
-	}	
-	debug("topic max-age : %ld\n",opt_topic_ma);
+	coap::OptionList option_data(request);
+	time_t abs_topic_ma = broker::handler::post::abs_ma(option_data);
+	
 	debug("topic abs max-age : %ld\n",abs_topic_ma);
-	/* Iterator to get max_age value */
 	
-	if (ct_opt_val_integer != COAP_MEDIATYPE_APPLICATION_LINK_FORMAT){
+	/* malformed request */
+	if (broker::handler::post::is_mr(request_pdu,lf_data)){
 		debug("ct option is not link format\n"); 
-		coapFreeResource(new_resource);
-		status=0; /* jump to malformed request handler */
+		broker::handler::mr_handler(response_pdu);
+		return;
 	} 
-	
-	/* Unsupported content format for topic. */
-	if (status)	{
-		/* search for ct attribute in the new_resource created by parseLinkFormat*/
-		coap_attr_t* new_resource_attr = coap_find_attr(new_resource,(const unsigned char*) "ct", 2);
-		
-		/* if new_resource doesn't have ct attribute, jump to malformed request handler and free new_resource */
-		if(new_resource_attr == NULL){
-			debug("ct attribute not found\n"); 
-			coapFreeResource(new_resource);
-			status=0; /* jump to malformed request handler */
-		}
-		
-		/* if new_resource does have ct attribute, check ct attribute validity. jump to 
-		 * "Unsupported content format for topic" handler if ct isn't valid */
-		else {
-			int is_digit = 1;
-			int ct_value_valid = 1;
-			
-			/* check ct value, by using isdigit() and iterate to every char in new_resource ct attribute */
-			for(int i = 0; i < new_resource_attr->value.length;i++){
-				if (!isdigit(new_resource_attr->value.s[i])){
-					is_digit = 0;
-					break;
-				}
-			}
-			
-			if(is_digit){
-				int ct_value = atoi((char*)new_resource_attr->value.s);
-				if(ct_value < 0 || ct_value > 65535){ 
-					ct_value_valid = 0;	/* jump to "Unsupported content format for topic" handler */
-				}
-			}
-			else { 
-				ct_value_valid = 0;	/* jump to "Unsupported content format for topic" handler */
-			}	
-			
-			/* "Unsupported content format for topic" handler */
-			if ( !ct_value_valid ){
-				coapFreeResource(new_resource); 
-				response->hdr->code = COAP_RESPONSE_CODE(406);
-				coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
-				return;
-			}			
-		}	
-	}	
-	/* Unsupported content format for topic. */
+	/* malformed request */
+
+	/* unsupported content format for topic. */
+	if(broker::handler::post::is_uscf(lf_data)){
+		debug("UCSF Error");
+		broker::handler::uscf_handler(response_pdu);
+		return;
+	}
+	/* unsupported content format for topic. */
 	
 	/* Topic already exists. */ 
-	
-	/* Iterate to every resource in coap ctx and compare 
-	 * iterated resource uri to new-resource. Jump to 
-	 * "Topic already exists" handler if both resource have the same uri */
-	if (status){
-		int found_resource = 0;
-		RESOURCES_ITER(ctx->resources, r) {
-			if(compareString((char*)r->uri.s,(char*) new_resource->uri.s)){
-				found_resource = 1; /* Jump to "Topic already exists" handler if both resource have the same uri */
-				break;
-			}
-		}
+	/* "Topic already exists" handler if both resource have the same uri */
+	if(broker::handler::post::is_tae(broker_ctx,lf_data)){
+		if (abs_topic_ma < earliest_topic_max_age && abs_topic_ma != 0) earliest_topic_max_age = abs_topic_ma;
 		
-		/* "Topic already exists" handler */
-		if(found_resource){
-			if (abs_topic_ma < earliest_topic_max_age && abs_topic_ma != 0){
-					earliest_topic_max_age = abs_topic_ma;
-			}
-			
-			topic_db.get_topic(std::string((char*)new_resource->uri.s))->update_topic(abs_topic_ma);
-			coapFreeResource(new_resource);
-			response->hdr->code = COAP_RESPONSE_CODE(403); 
-			coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
-			return ;
-		}
+		topic_db.get_topic(lf_data.get_path().get_string())->update_topic(abs_topic_ma);
+		broker::handler::tae_handler(response_pdu);
+		return ;
 	}
 	/* Topic already exists. */
-	
+
 	/* Successful Creation of the topic */
-	if (status){
-			if (abs_topic_ma < earliest_topic_max_age && abs_topic_ma != 0){
-					earliest_topic_max_age = abs_topic_ma;
-			}
-			if(mqtt_bridge){
-				MQTTClient_subscribe(*global_client, (char*)new_resource->uri.s, QOS);
-			}
-			coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
-			coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
-			coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
-			coap_register_handler(new_resource, COAP_REQUEST_DELETE, hnd_delete_topic);
-			new_resource->observable = 1;
-			coap_add_resource(ctx, new_resource);
-			coap_add_option(response, COAP_OPTION_LOCATION_PATH, new_resource->uri.length, new_resource->uri.s);
-            topic_db.add_topic(std::string((char*) new_resource->uri.s, new_resource->uri.length), abs_topic_ma);
-			response->hdr->code = COAP_RESPONSE_CODE(201) ;
-			coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
-			return ; 
+	if (abs_topic_ma < earliest_topic_max_age && abs_topic_ma != 0){
+		earliest_topic_max_age = abs_topic_ma;
 	}
+
+	/* create resource payload */
+	broker::handler::post::s_handler(broker_ctx, lf_data, response_pdu, abs_topic_ma);
 	/* Successful Creation of the topic */
-	
-	/* malformed request */
-	/* don't need to free new_resource. Any error will be handle and freed in parseLinkFormat() */
-	if (!status){
-		response->hdr->code = COAP_RESPONSE_CODE(400);
-		coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
-		return ; 
-	} 
-	/* malformed request */
 }
 
-void CoAPBroker::hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource, 
+void BrokerResource::hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource, 
      const coap_endpoint_t *local_interface, coap_address_t *peer, 
      coap_pdu_t *request, str *token, coap_pdu_t *response){
            
@@ -475,7 +484,7 @@ void CoAPBroker::hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *reso
 }
 
 
-void CoAPBroker::hnd_put_topic(coap_context_t *ctx ,
+void BrokerResource::hnd_put_topic(coap_context_t *ctx ,
              struct coap_resource_t *resource ,
              const coap_endpoint_t *local_interface ,
              coap_address_t *peer ,
@@ -555,17 +564,6 @@ void CoAPBroker::hnd_put_topic(coap_context_t *ctx ,
 		if (ma_opt_val_time_t < earliest_data_max_age && ma_opt_val_time_t != 0){
 			earliest_data_max_age = ma_opt_val_time_t;
 		}
-		if(mqtt_bridge){		
-			MQTTClient_message pubmsg = MQTTClient_message_initializer;
-			MQTTClient_deliveryToken token;
-			pubmsg.payload = data;
-			pubmsg.payloadlen = size;
-			pubmsg.qos = QOS;
-			pubmsg.retained = 0;
-			deliveredtoken = 0;
-			MQTTClient_publishMessage(*global_client, (char*)resource->uri.s, &pubmsg, &token);
-			debug("Waiting for publication of %s on topic %s for client with ClientID: %s\n", data, resource->uri.s, CLIENTID); // printing unsafe data //
-		}
 		resource->dirty = 1;
 		coap_check_notify(ctx);
 		response->hdr->code = COAP_RESPONSE_CODE(204);
@@ -576,7 +574,7 @@ void CoAPBroker::hnd_put_topic(coap_context_t *ctx ,
 }
 
                
-void CoAPBroker::hnd_post_topic(coap_context_t *ctx ,
+void BrokerResource::hnd_post_topic(coap_context_t *ctx ,
                 struct coap_resource_t *resource ,
                 const coap_endpoint_t *local_interface ,
                 coap_address_t *peer ,
@@ -731,9 +729,6 @@ void CoAPBroker::hnd_post_topic(coap_context_t *ctx ,
 			if (abs_topic_ma < earliest_topic_max_age && abs_topic_ma != 0){
 					earliest_topic_max_age = abs_topic_ma;
 			}
-			if(mqtt_bridge){
-				MQTTClient_subscribe(*global_client, (char*)new_resource->uri.s, QOS);
-			}
 			coap_register_handler(new_resource, COAP_REQUEST_GET, hnd_get_topic);
 			coap_register_handler(new_resource, COAP_REQUEST_POST, hnd_post_topic);
 			coap_register_handler(new_resource, COAP_REQUEST_PUT, hnd_put_topic);
@@ -759,34 +754,31 @@ void CoAPBroker::hnd_post_topic(coap_context_t *ctx ,
 	/* malformed request */
 } 
 
-void CoAPBroker::hnd_delete_topic(coap_context_t *ctx ,
+void BrokerResource::hnd_delete_topic(coap_context_t *ctx ,
                 struct coap_resource_t *resource ,
                 const coap_endpoint_t *local_interface ,
                 coap_address_t *peer ,
                 coap_pdu_t *request ,
                 str *token ,
                 coap_pdu_t *response ){
+	std::cout << "BANANANS" << std::endl;
 	int counter = 0;
 	char* deleted_sub_uri = (char*) malloc(sizeof(char) *(resource->uri.length+3));
 	snprintf(deleted_sub_uri, (resource->uri.length+1)+1, "%s/", resource->uri.s);
 	
-	counter = topic_db.delete_topic(std::string((char*)resource->uri.s));
+	std::cout << "Resource name : " << (char*)resource->uri.s << std::endl;
+	counter = topic_db.delete_topic(std::string((char*)resource->uri.s,resource->uri.length));
 	//counter = deleteTopic(&topicDB, resource->uri.s);
 	
 	if (counter){
-		if(mqtt_bridge){
-			MQTTClient_unsubscribe(*global_client,(char*) resource->uri.s);
-		}
 		RESOURCES_DELETE(ctx->resources, resource);
 		coapFreeResource(resource);
 	
 		RESOURCES_ITER(ctx->resources, r) {
+			
 			if (strstr((char*)r->uri.s, deleted_sub_uri) != NULL){ 
 				//if (deleteTopic(&topicDB, r->uri.s)){
 				if (topic_db.delete_topic(std::string((char*)r->uri.s))){
-					if(mqtt_bridge){
-						MQTTClient_unsubscribe(*global_client, (char*)r->uri.s);
-					}
 					RESOURCES_DELETE(ctx->resources, r);
 					coapFreeResource(r);	// modified coap_free_resource
 					counter++;
@@ -794,6 +786,7 @@ void CoAPBroker::hnd_delete_topic(coap_context_t *ctx ,
 			}
 		}
 	}
+	std::cout << " Counter : " << counter << std::endl;
 	if(counter){
 		response->hdr->code = COAP_RESPONSE_CODE(202);
 	}
@@ -822,7 +815,7 @@ void CoAPBroker::hnd_delete_topic(coap_context_t *ctx ,
 
 
 
-void CoAPBroker::topicDataMAMonitor(){
+void BrokerResource::topicDataMAMonitor(coap_context_t** global_ctx){
 	
 	TopicDataPtr currentPtr = topic_db.get_head();
 	time_t master_time = time(NULL);
@@ -881,7 +874,7 @@ void CoAPBroker::topicDataMAMonitor(){
 	}
 }
 
-void CoAPBroker::topicMAMonitor(){
+void BrokerResource::topicMAMonitor(coap_context_t** global_ctx){
 	
 	TopicDataPtr currentPtr = topic_db.get_head();
 	time_t master_time = time(NULL);
@@ -919,9 +912,6 @@ void CoAPBroker::topicMAMonitor(){
 						//topicNodeUnlock(currentPtr);
 						//if (deleteTopic(&topicDB, r->uri.s)){
 						if (topic_db.delete_topic(std::string((char*)r->uri.s))){
-							if(mqtt_bridge){
-								MQTTClient_unsubscribe(*global_client, (char*)r->uri.s);
-							}
 							RESOURCES_DELETE((*global_ctx)->resources, r);
 							coapFreeResource(r);
 							break;
@@ -954,72 +944,4 @@ void CoAPBroker::topicMAMonitor(){
 		}
 	}
 }
-  
-void CoAPBroker::delivered(void *context, MQTTClient_deliveryToken dt){
-
-	debug("Message with token value %d delivery confirmed\n", dt);
-	deliveredtoken = dt;
-}
-
-int CoAPBroker::msgarrvd(void *context, char *topicName, int topicLen, MQTTClient_message *message){
-	int i;
-	char* payloadptr;
-	
-	RESOURCES_ITER(((*global_ctx))->resources, r) {
-		if(compareString((char*) r->uri.s, topicName)){
-			//TopicDataPtr 	temp_data = cloneTopic(&topicDB,r->uri.s);
-			TopicDataPtr 	temp_data = topic_db.copy_topic(std::string((char*)r->uri.s));
-			char*			temp_payload = (char*)malloc(sizeof(char)*(message->payloadlen + 2));
-			snprintf(temp_payload, (message->payloadlen)+1, "%s", (char*)message->payload);
-			debug("Data from DB : %s\n", temp_data->get_data().c_str());
-			debug("Data from MQTT : %s\n", temp_payload);
-			EString temp_estring = temp_data->get_data();
-			if(!compareString(temp_estring.get_char().get(),temp_payload)){
-				topic_db.get_topic(std::string(topicName))->update_topic(std::string((char*)message->payload,message->payloadlen), 0);
-				//updateTopicData(&topicDB,topicName,0,message->payload,message->payloadlen);
-				r->dirty = 1; 
-				coap_check_notify((*global_ctx));
-			}
-			free(temp_payload);
-			//freeTopic(temp_data); already use shared_ptr
-			
-			MQTTClient_freeMessage(&message);
-			MQTTClient_free(topicName);
-			return 1;
-		}
-	}
-		
-	MQTTClient_freeMessage(&message);
-	MQTTClient_free(topicName);
-	return 0;
-}
-
-void CoAPBroker::connlost(void *context, char *cause){
-	
-	debug("\nConnection lost cause: %s\n", cause);
-}
-
-bool CoAPBroker::initialize_mqtt_bridge(){
-
-	if(!mqtt_bridge){
-		MQTTClient	client;
-		mqtt_bridge = true;
-		char mqtt_address[]    				= "tcp://localhost:1883";
-		global_client 						= &client;
-		MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-		int rc 								= 0 ;
-
-		MQTTClient_create			(&client, mqtt_address, CLIENTID, MQTTCLIENT_PERSISTENCE_NONE, NULL);
-		conn_opts.keepAliveInterval = 20;
-		conn_opts.cleansession 		= 1;
-		MQTTClient_setCallbacks		(client, NULL, connlost, msgarrvd, delivered);
-
-		if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS)
-		{
-			debug("Failed to connect, return code %d\n", rc);
-			return false;       
-		}
-	}
-	return true;
-	/* MQTT Client Init */
 }

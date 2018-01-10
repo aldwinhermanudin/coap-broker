@@ -4,7 +4,9 @@
 /* Link Format Parser starts here */
 #include <iostream>
 #include <string.h> 
-#include <coap.h> 
+#include <coap.h>
+#include "LibcoapMod.h"
+#include "LinkFormat.hpp"
 
 int optionValidation(char* source);
 int calOptionSize(char* source, int* type, int* data);
@@ -17,4 +19,9 @@ int parseLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** 
 int parseOptionURIQuery(char* option_value, unsigned short option_length, char** query_name, char** query_value);
 void dynamicConcatenate(char **str, char *str2);
 int calculateResourceLF(coap_resource_t* resource);
+
+int checkLinkFormat(char* str, coap_resource_t* old_resource, coap_resource_t** resource);
+int checkPath(const char* source);
+int pathSize(const char* source);
+
 #endif

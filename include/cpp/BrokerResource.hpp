@@ -4,30 +4,49 @@
 #include <limits.h> 
 #include <string>
 #include "LinkedListDB.hpp"
-#include <MQTTClient.h>
 #include "coap.h"
 #include "LibcoapMod.hpp"
 #include "LinkFormatParser.hpp"
-#include "EString.hpp"
-#include "CoAPResource.hpp"
-#include "CoAPServer.hpp"
+#include "UString.hpp"
+#include "Resource.hpp"
+#include "Server.hpp"
+namespace coap{
 
-/* MQTT bridge variable */
-#define CLIENTID	"CoAPBroker"
-#define QOS         1
-#define TIMEOUT     10000L
+namespace broker{
+    namespace handler{
+        void tae_handler(ProtocolDataUnit response_pdu);
+        void mr_handler(ProtocolDataUnit response_pdu);
+        void uscf_handler(ProtocolDataUnit response_pdu);
+        bool has_only_digits(const std::string s);
 
-class CoAPBroker : public CoAPResource{
+        namespace post{
+            time_t abs_ma(OptionList);
+            void s_handler(LinkFormat lf_data, ProtocolDataUnit response_pdu,time_t abs_topic_ma);
+            bool is_ct_valid(ProtocolDataUnit request, unsigned short type);
+            bool is_mr(ProtocolDataUnit request, LinkFormat lf_data);
+            bool is_uscf(LinkFormat lf_data);
+            bool is_tae(LinkFormat lf_data);
+        }
+    }
+    namespace sub{
+        namespace handler{
+            namespace put{
+                
+					
+            }
+        }
+    }
+}
+
+
+class BrokerResource : public Resource{
     
-    private:
+    public:
         /* Global variable */
         static coap_context_t**  	global_ctx;
         static TopicDB      topic_db;
-        static MQTTClient*  global_client;
-        static bool          mqtt_bridge;
         static time_t       earliest_topic_max_age;
         static time_t		earliest_data_max_age;
-        static volatile     MQTTClient_deliveryToken deliveredtoken;
 
         static int	compareString(char* a, char* b);
             
@@ -69,18 +88,13 @@ class CoAPBroker : public CoAPResource{
                         str *token ,
                         coap_pdu_t *response );
 
-        void topicDataMAMonitor();
-        void topicMAMonitor();
-
-        /* MQTT bridge call-back */	
-        static void 	delivered (void *context, MQTTClient_deliveryToken dt);
-        static int 	    msgarrvd  (void *context, char *topicName, int topicLen, MQTTClient_message *message);
-        static void 	connlost  (void *context, char *cause);
+        void topicDataMAMonitor(coap_context_t** global_ctx);
+        void topicMAMonitor(coap_context_t** global_ctx);
 
     public:
 
-        CoAPBroker(EString name, CoAPServer &server);
-        bool initialize_mqtt_bridge();
+        BrokerResource(coap::UString name);
     };
+}
 
 #endif

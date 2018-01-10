@@ -109,7 +109,7 @@ int optionRegister(coap_resource_t **resource , char* temp_str){
 		char* opt_data = malloc(sizeof(char) * (data_size+1));
 		int status = parseOption(temp_str, opt_type,opt_data);
 		if(status){
-			coap_add_attr(*resource, opt_type, strlen(opt_type), opt_data, strlen(opt_data), 0);
+			coap_add_attr(*resource, opt_type, strlen(opt_type), opt_data, strlen(opt_data), COAP_ATTR_FLAGS_RELEASE_NAME | COAP_ATTR_FLAGS_RELEASE_VALUE);
 		}
 		else {
 			free(opt_type);

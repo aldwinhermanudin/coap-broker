@@ -1,0 +1,19 @@
+{
+    "files.associations": {
+        "cstring": "cpp",
+        "cstdio": "cpp",
+        "*.ipp": "cpp",
+        "initializer_list": "cpp",
+        "typeinfo": "cpp",
+        "cctype": "cpp",
+        "cmath": "cpp",
+        "cstdarg": "cpp",
+        "cstddef": "cpp",
+        "cstdlib": "cpp",
+        "cwchar": "cpp",
+        "atomic": "cpp",
+        "cstdint": "cpp",
+        "exception": "cpp",
+        "iosfwd": "cpp"
+    }
+}

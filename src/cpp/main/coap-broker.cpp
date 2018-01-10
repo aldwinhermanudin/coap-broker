@@ -6,11 +6,10 @@
 #include "coap.h"
 #include <MQTTClient.h>
 #include <LinkedListDB.hpp>
-#include "CoAPRD.hpp"
-#include "EString.hpp"
-#include "CoAPResource.hpp"
-#include "CoAPServer.hpp"
-#include "CoAPBroker.hpp"
+#include "UString.hpp"
+#include "Resource.hpp"
+#include "Server.hpp"
+#include "BrokerResource.hpp"
 
 using namespace std; 
 
@@ -21,18 +20,12 @@ static void handle_sigint(int signum) {
 
 static void usage( const char *program, const char *version);
 
-
-
 int main(){
-
-    MQTTClient 							client;
  
-    CoAPServer coap_server; 
+    coap::Server coap_server; 
 
-    CoAPRD coap_rd(EString("rd")); 
-    CoAPBroker coap_broker(EString("ps"), coap_server);
-    //coap_broker.initialize_mqtt_bridge();
-    coap_server.add_resource(coap_rd);
+    coap_server.set_log_level(LOG_DEBUG);
+    coap::BrokerResource coap_broker(coap::UString("ps"));
     coap_server.add_resource(coap_broker); 
 
     signal(SIGINT, handle_sigint);
@@ -40,6 +33,7 @@ int main(){
         coap_server.run();
     }   
 
+	coap_server.end_server();
     return 0;
 }
 

@@ -14,7 +14,7 @@ namespace coap{
         ustring data_;
     public:
         UString();
-        UString(unsigned char* input, size_t length);
+        UString(const unsigned char* input, size_t length);
         UString(const char* input);
         UString(std::string input);
         friend std::ostream &operator<<( std::ostream &output, const UString &input ); 
@@ -25,6 +25,7 @@ namespace coap{
         ustring get_ustring();
         std::string get_string();
         size_t get_length();
+        bool is_equal(UString data);
     };
 }
 

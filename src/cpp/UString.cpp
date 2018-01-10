@@ -2,7 +2,7 @@
   
   namespace coap{
     UString::UString(){}
-    UString::UString(unsigned char* input, size_t length){
+    UString::UString(const unsigned char* input, size_t length){
         data_ = ustring(input, length);;
     }
     UString::UString(const char* input){
@@ -56,5 +56,11 @@
     size_t UString::get_length(){
         return data_.length();
     } 
+
+    bool UString::is_equal(UString data){
+        if(data_.compare(data.get_ustring()) == 0)return true;
+        
+        else return false;        
+    }
   }
     

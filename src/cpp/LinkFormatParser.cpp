@@ -1,5 +1,4 @@
 #include "LinkFormatParser.hpp"
-#include "LibcoapMod.h"
 
 int optionValidation(char* source){ 
   char * pch;
