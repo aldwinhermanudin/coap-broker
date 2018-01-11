@@ -1,8 +1,8 @@
 #include "LinkFormat.hpp"
 
 namespace coap{
-
-	const std::string LinkFormat::lf_path_pattern_ = "<[\\w-][\\w\\/\\-]+[\\w-]>";
+	
+	const std::string LinkFormat::lf_path_pattern_ = "<(([\\w-][\\w\\/\\-]+[\\w-])|([\\w-]+))>";
 	const std::string LinkFormat::lf_attr_name_pattern_ = "[\\w-]+";
 	const std::string LinkFormat::lf_attr_t1_pattern_ = "[0-9]+";
 	const std::string LinkFormat::lf_attr_t2_pattern_ = "(\"[\\w-]+\")";
