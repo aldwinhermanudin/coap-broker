@@ -2,7 +2,7 @@
 
 namespace coap{
 
-	const std::string LinkFormat::lf_path_pattern_ = "<[\\w\\/\\-]+>";
+	const std::string LinkFormat::lf_path_pattern_ = "<[\\w-][\\w\\/\\-]+[\\w-]>";
 	const std::string LinkFormat::lf_attr_name_pattern_ = "[\\w-]+";
 	const std::string LinkFormat::lf_attr_t1_pattern_ = "[0-9]+";
 	const std::string LinkFormat::lf_attr_t2_pattern_ = "(\"[\\w-]+\")";
@@ -10,7 +10,7 @@ namespace coap{
 	const std::string LinkFormat::link_format_pattern_= std::string("^") + lf_path_pattern_ + std::string("(;") + lf_attr_name_pattern_ + std::string("=(")
 														+ lf_attr_t1_pattern_ + std::string("|") + lf_attr_t2_pattern_ + std::string("|") + lf_attr_t3_pattern_
 														+ std::string("))+$");
-	/* complete link format pattern => "^<[\\w\\/\\-]+>(;[\\w-]+=([0-9]+|(\"[\\w-]+\")|([\\w-])+))+$" */
+	/* complete link format pattern => "^<[\\w-][\\w\\/\\-]+[\\w-]>(;[\\w-]+=([0-9]+|(\"[\\w-]+\")|([\\w-])+))+$" */
 
 	/* default to release attr name and value */
 	Attribute LinkFormat::parse_attribute(UString attribute_lf, int flags){

@@ -62,5 +62,13 @@
         
         else return false;        
     }
+    bool UString::has_substr(UString data){
+        ustring substr = data.get_ustring();
+        size_t search = data_.find(substr);
+        if(search != std::string::npos){
+            return true;
+        }
+        return false;
+    }
   }
     

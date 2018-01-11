@@ -75,6 +75,42 @@
             return temp;
         }
 
+        void Server::delete_resource(Resource resource){
+            RESOURCES_DELETE(ctx_->resources, resource.get_resource());
+            resource.free_resource();
+        }
+
+        bool Server::delete_resource(UString uri){
+
+            RESOURCES_ITER(ctx_->resources, r) {
+                
+                Resource res(r);
+                if(res.get_name().is_equal(uri)){
+                    RESOURCES_DELETE(ctx_->resources, r);
+                    res.free_resource();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        int Server::delete_resource(Resource comparison ,std::function< bool(Resource,Resource) >& comparator){
+            int counter = 0;
+            RESOURCES_ITER(ctx_->resources, r) {
+                
+                Resource res(r);
+                if(comparator(comparison,res)){
+                    delete_resource(res);
+                    counter++;
+                }
+            }
+            return counter;
+        }
+
+        void Server::notify(){
+            coap_check_notify(ctx_);
+        }
+
         void Server::end_server(){
             coap_delete_all_resources(ctx_);
             coap_free_context(ctx_);

@@ -26,6 +26,7 @@ namespace coap{
         std::string get_string();
         size_t get_length();
         bool is_equal(UString data);
+        bool has_substr(UString data);
     };
 }
 

@@ -3,8 +3,7 @@
 #include <signal.h>
 #include <cstring>
 #include <memory>
-#include "coap.h"
-#include <MQTTClient.h>
+#include "coap.h" 
 #include <LinkedListDB.hpp>
 #include "UString.hpp"
 #include "Resource.hpp"

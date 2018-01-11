@@ -2,6 +2,7 @@
 #define COAP_SERVER_HPP
 
 #include "coap.h"
+#include "resource.h"
 #include "Resource.hpp"
 
 namespace coap{
@@ -22,6 +23,10 @@ namespace coap{
             void set_log_level(coap_log_t type);
             bool is_resource_exist(UString uri);
             Resource get_resource(UString uri);
+            void delete_resource(Resource resource);
+            bool delete_resource(UString uri);
+            int delete_resource(Resource comparison, std::function< bool(Resource,Resource) >& comparator);
+            void notify();
             void run();
             void end_server();
     };

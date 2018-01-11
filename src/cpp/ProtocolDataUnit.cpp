@@ -42,6 +42,20 @@ namespace coap{
         result = UString(data, size);
         return status;        
     }
+    
+    UString ProtocolDataUnit::get_data(int &status){
+        
+        UString result;
+        status = get_data(result);
+        return result;  
+    }
+
+    UString ProtocolDataUnit::get_data(){
+        
+        UString result;
+        get_data(result);
+        return result;  
+    }
 
     coap_pdu_t *ProtocolDataUnit::get_pdu(){
         return pdu_;

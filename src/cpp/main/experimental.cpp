@@ -3,8 +3,7 @@
 #include <signal.h>
 #include <cstring>
 #include <memory>
-#include "coap.h"
-#include <MQTTClient.h>
+#include "coap.h" 
 #include <LinkedListDB.hpp>
 #include "UString.hpp"
 #include "Resource.hpp"
@@ -14,6 +13,15 @@
 
 using namespace std; 
 using namespace coap;
+
+template <typename T>
+void calculate(int sample, T lambda);
+
+template <typename T>
+void calculate(int sample, T lambda) {
+    int banana = 20;
+    lambda(sample,banana);
+}
 
 int main(){
     string sample2 = "banana";
@@ -98,5 +106,17 @@ int main(){
         cout  << "Attr : " << val.get_name() << " " << val.get_value() << endl;
     }
 
+    auto fn = [](int a, int b) { cout<< a+b <<endl; };
+    calculate(10, fn);
+    std::string apple("/ps/banana/apple");
+    std::string fruit_one("/ps/banana/");
+    string fruit_two("apple");
+    string no_fruit("orange");
+    size_t search = apple.find(no_fruit);
+    cout << search << endl;
+
+    UString main_topic("ps/banana/apple");
+    UString sub_topic("ps/banana");
+    cout << main_topic.has_substr(UString("apple")) << endl;
     return 0;
 }

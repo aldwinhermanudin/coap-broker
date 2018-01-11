@@ -18,11 +18,11 @@ namespace broker{
         void mr_handler(ProtocolDataUnit response_pdu);
         void uscf_handler(ProtocolDataUnit response_pdu);
         bool has_only_digits(const std::string s);
+        bool is_ct_valid(ProtocolDataUnit request, unsigned short type);
 
         namespace post{
             time_t abs_ma(OptionList);
             void s_handler(LinkFormat lf_data, ProtocolDataUnit response_pdu,time_t abs_topic_ma);
-            bool is_ct_valid(ProtocolDataUnit request, unsigned short type);
             bool is_mr(ProtocolDataUnit request, LinkFormat lf_data);
             bool is_uscf(LinkFormat lf_data);
             bool is_tae(LinkFormat lf_data);
@@ -31,9 +31,12 @@ namespace broker{
     namespace sub{
         namespace handler{
             namespace put{
-                
-					
-            }
+                int abs_ct_value(OptionList request_opt);
+                time_t abs_ma_value(OptionList request_opt);
+                bool is_br(OptionList);
+                bool is_uscf(Resource parent_resource, OptionList request_opt);
+                bool is_s();
+            } 
         }
     }
 }

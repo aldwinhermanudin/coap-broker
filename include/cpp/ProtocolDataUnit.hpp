@@ -25,6 +25,8 @@ namespace coap{
         int add_option(Option data);
         int add_data(UString data);
         int get_data(UString &result);
+        UString get_data(int &status);
+        UString get_data();
         coap_pdu_t *get_pdu();
         void add_response_data(unsigned short code);
         void add_response_data(UString data);
