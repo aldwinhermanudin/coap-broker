@@ -107,6 +107,9 @@
             return counter;
         }
 
+        unsigned int Server::get_obs_value(){
+            return ctx_->observe;
+        }
         void Server::notify(){
             coap_check_notify(ctx_);
         }

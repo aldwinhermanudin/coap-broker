@@ -19,4 +19,10 @@ namespace coap{
           free(temp);
           return result;
         }
+        UString Option::encode_data(unsigned int value){
+          unsigned char buf[3];
+          unsigned int size =  coap_encode_var_bytes(buf,value);
+          UString result(buf,size);
+          return result;
+        }
 }

@@ -85,6 +85,16 @@ namespace coap{
             else resource_->dirty = 0;            
         }
 
+        bool Resource::is_observer_exist(Address peer,UString token){
+            str temp;
+            temp.s = token.copy_uchar_unsafe();
+            temp.length = token.get_length();
+            bool result = false;
+            if (coap_find_observer(resource_, peer.get_address(), &temp) != NULL) result = true;
+            free(temp.s);
+            return result;
+        }
+
         coap_resource_t*& Resource::get_resource(){
             return resource_;
         }

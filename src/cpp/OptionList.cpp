@@ -15,7 +15,6 @@ namespace coap{
             data_.push_back(temp);
           }
         }
-
         bool OptionList::type_exist(unsigned short type){
           for(Option value : data_){
             if ( value.get_delta() == type){ return true;}

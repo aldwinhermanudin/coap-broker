@@ -11,7 +11,7 @@ namespace coap{
     class ProtocolDataUnit{
 
         private:
-            coap_pdu_t * pdu_;
+            coap_pdu_t * pdu_ = NULL;
             size_t size_;
 
 
@@ -33,6 +33,7 @@ namespace coap{
         void add_response_data(unsigned short code, UString data);
 
         OptionList get_option();
+        bool is_empty();
 
         static void delete_pdu(ProtocolDataUnit pdu);
         static void delete_pdu(coap_pdu_t * pdu);

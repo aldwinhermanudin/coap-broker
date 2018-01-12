@@ -6,7 +6,6 @@
 #include "UString.hpp"
 #include "Option.hpp"
 
-
 namespace coap{
 
     class OptionList{

@@ -30,6 +30,8 @@ int main(){
     signal(SIGINT, handle_sigint);
     while (!quit) {
         coap_server.run();
+		coap_broker.topicDataMAMonitor();
+		coap_broker.topicMAMonitor(coap_server.get_context());
     }   
 
 	coap_server.end_server();

@@ -26,6 +26,7 @@ namespace coap{
             void delete_resource(Resource resource);
             bool delete_resource(UString uri);
             int delete_resource(Resource comparison, std::function< bool(Resource,Resource) >& comparator);
+            unsigned int get_obs_value();
             void notify();
             void run();
             void end_server();

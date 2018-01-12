@@ -3,6 +3,7 @@
 
 #include "coap.h"
 #include "resource.h"
+#include "Address.hpp"
 #include "UString.hpp"
 #include "Attribute.hpp"
 #include "LinkFormat.hpp"
@@ -77,6 +78,7 @@ namespace coap{
         void add_attribute(coap::Attribute attribute, int flags);
         void set_observable(bool obs_status);
         void set_dirty(bool dirty_status);
+        bool is_observer_exist(Address peer,UString token);
         void free_resource();
         coap_resource_t*& get_resource();
     

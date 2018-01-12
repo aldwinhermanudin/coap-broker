@@ -20,6 +20,7 @@ namespace coap{
         unsigned short get_delta();
         UString get_value();
         int decode_value();
+        static UString encode_data(unsigned int value);
     };
 }
 

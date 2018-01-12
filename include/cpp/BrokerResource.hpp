@@ -37,6 +37,14 @@ namespace broker{
                 bool is_uscf(Resource parent_resource, OptionList request_opt);
                 bool is_s();
             } 
+            namespace get{
+                bool is_observe_notify_response(Resource current_resource,Address peer_addr, UString token_data, ProtocolDataUnit request);
+                bool is_observe_regist_request(Resource current_resource,Address peer_addr, UString token_data, ProtocolDataUnit request);
+                bool is_ct_exist(ProtocolDataUnit request_pdu);
+                bool is_uscf(Resource current_resource,Address peer_addr, UString token_data, ProtocolDataUnit request);
+                bool is_br(Resource current_resource,Address peer_addr, UString token_data, ProtocolDataUnit request);
+                bool is_ct_valid(Resource current_resource, ProtocolDataUnit request);
+            }
         }
     }
 }
@@ -46,7 +54,6 @@ class BrokerResource : public Resource{
     
     public:
         /* Global variable */
-        static coap_context_t**  	global_ctx;
         static TopicDB      topic_db;
         static time_t       earliest_topic_max_age;
         static time_t		earliest_data_max_age;
@@ -91,8 +98,8 @@ class BrokerResource : public Resource{
                         str *token ,
                         coap_pdu_t *response );
 
-        void topicDataMAMonitor(coap_context_t** global_ctx);
-        void topicMAMonitor(coap_context_t** global_ctx);
+        void topicDataMAMonitor();
+        void topicMAMonitor(coap_context_t* global_ctx);
 
     public:
 

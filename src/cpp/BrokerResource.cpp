@@ -174,6 +174,65 @@ namespace coap{
 						return BrokerResource::topic_db.get_topic(parent_resource.get_name().get_string())->update_topic(request_payload.get_string(),ma_opt_val_time_t);
 					}
 
+				}
+				namespace get{
+
+					bool is_observe_notify_response(Resource current_resource, Address peer_addr, UString token_data, ProtocolDataUnit request){
+						if (current_resource.is_observer_exist(peer_addr, token_data) && request.is_empty()){
+							return true;
+							debug("This is a Subscriber Notification Response \n");
+						}
+						else return false;
+					}
+					bool is_observe_regist_request(Resource current_resource,Address peer_addr, UString token_data, ProtocolDataUnit request){
+						int obs_opt_val_integer = -1;
+						if(!request.is_empty()) { 
+													
+							if(request.get_option().type_exist(COAP_OPTION_OBSERVE)){
+								obs_opt_val_integer = request.get_option().get_option(COAP_OPTION_OBSERVE).decode_value();
+							}
+						}
+						if (current_resource.is_observer_exist(peer_addr, token_data) && !request.is_empty() && obs_opt_val_integer == 0){
+							return true;
+							debug("This is a Subscriber Registration Request \n");
+						}
+						return false;
+					}
+
+					bool is_ct_exist(ProtocolDataUnit request_pdu){
+						if(!request_pdu.is_empty()) {   
+							if( request_pdu.get_option().type_exist(COAP_OPTION_CONTENT_TYPE)){
+								return true;
+							}
+						}
+						return false;
+					}
+					bool is_uscf(Resource current_resource,Address peer_addr, UString token_data, ProtocolDataUnit request){
+
+						if ((is_ct_exist(request) || (is_ct_exist(request) && broker::sub::handler::get::is_observe_regist_request(current_resource, peer_addr, token_data, request))) 
+								&& !broker::sub::handler::get::is_observe_notify_response(current_resource, peer_addr, token_data, request)){
+									return true;
+						}
+						return false;
+					}
+					bool is_br(Resource current_resource,Address peer_addr, UString token_data, ProtocolDataUnit request){
+						if((!is_ct_exist(request) || (!is_ct_exist(request) && broker::sub::handler::get::is_observe_regist_request(current_resource, peer_addr, token_data, request))) 
+								&& !broker::sub::handler::get::is_observe_notify_response(current_resource, peer_addr, token_data, request)){
+									return true;
+						}
+						return false;
+					}
+					bool is_ct_valid(Resource current_resource, ProtocolDataUnit request){
+						int res_ct = std::stoi(current_resource.find_attribute(UString("ct")).get_value().get_string()); 
+						if(is_ct_exist(request)){
+							int req_ct = request.get_option().get_option(COAP_OPTION_CONTENT_TYPE).decode_value();
+							if (res_ct == req_ct){
+								return true;
+							}
+						}
+						return false;
+						
+					}
 				} 
 			}
 		}
@@ -406,127 +465,80 @@ BrokerResource::hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *res
 void BrokerResource::hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *resource, 
      const coap_endpoint_t *local_interface, coap_address_t *peer, 
      coap_pdu_t *request, str *token, coap_pdu_t *response){
-           
-	unsigned char buf[3];
-	int status = 0; 
-	int is_observe_notification_response = 0;
-	int is_observe_registration_request = 0;
-	int ct_attr_value = atoi((char*)(coap_find_attr(resource,(const unsigned char*) "ct", 2))->value.s);
+    
+	Server broker_ctx(ctx);
+	Resource current_resource(resource);
+	ProtocolDataUnit request_pdu(request);
+	ProtocolDataUnit response_pdu(response);
 
-	/* to get max_age value and observe*/
-	unsigned int ct_opt_val_integer = -1;
-	int ct_opt_status = 0;
-	
-	unsigned int obs_opt_val_integer = -1;
-	int obs_opt_status = 0;
-
-	if(request != NULL) { 
-		debug("Request is NOT NULL \n");		
-		coap_opt_t *option;
-		coap_opt_iterator_t opt_iter; 
-		coap_option_iterator_init(request, &opt_iter, COAP_OPT_ALL); 
-					
-		while ((option = coap_option_next(&opt_iter))) {
-			if (opt_iter.type == COAP_OPTION_CONTENT_TYPE && !ct_opt_status) { // !ct_opt_status means only take the first occurence of that option
-					ct_opt_status = 1;
-					ct_opt_val_integer =  coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option)); 
-			}
-			if (opt_iter.type == COAP_OPTION_OBSERVE && !obs_opt_status ) { // !obs_opt_status means only take the first occurence of that option
-					obs_opt_status = 1;
-					obs_opt_val_integer =  coap_decode_var_bytes(coap_opt_value(option), coap_opt_length(option));
-					debug("Observe GET value : %d\n", obs_opt_val_integer); 
-			}
-			if (ct_opt_status && obs_opt_status) { break;}
-		}	
-	}
+	int ct_attr_value = std::stoi(current_resource.find_attribute(UString("ct")).get_value().get_string());
 	/* to get max_age value and observe*/
 
-	if (coap_find_observer(resource, peer, token) && request == NULL){
-		is_observe_notification_response = 1;
-		debug("This is a Subscriber Notification Response \n");
-	}
-	else if (coap_find_observer(resource, peer, token) && request != NULL && obs_opt_val_integer == 0){
-		is_observe_registration_request = 1;
-		debug("This is a Subscriber Registration Request \n");
-	}
-	else{ 
-		debug("This is a READ Request \n");
-	}
+	Address peer_addr(peer);
+	UString token_data(token->s, token->length);
+	 
 
 	/* Unsupported Content Format */
-	if ((ct_opt_status || (ct_opt_status && is_observe_registration_request)) && !is_observe_notification_response){
+	if ( broker::sub::handler::get::is_uscf(current_resource, peer_addr, token_data, request_pdu)){
 	
-		if (ct_attr_value == ct_opt_val_integer){ 
-			status = 1; 
-		}		
-		else{
-			debug("requested ct : %d\n", ct_opt_val_integer);
-			debug("available ct : %d\n", ct_attr_value);
-			response->hdr->code 	= COAP_RESPONSE_CODE(415);
-			coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
+		if (!broker::sub::handler::get::is_ct_valid(current_resource, request_pdu)){ 
+			response_pdu.add_response_data(COAP_RESPONSE_CODE(415)); 
 			return;
 		}	
 	}
 	/* Unsupported Content Format */
 
 	/* Bad Request */
-	else if((!ct_opt_status || (!ct_opt_status && is_observe_registration_request)) && !is_observe_notification_response){
-		response->hdr->code 	= COAP_RESPONSE_CODE(400);
-		coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
+	if(broker::sub::handler::get::is_br(current_resource, peer_addr, token_data, request_pdu)){
+		response_pdu.add_response_data(COAP_RESPONSE_CODE(400));
 		return;
 	}
 	/* Bad Request */
 
-	TopicDataPtr temp = topic_db.copy_topic(std::string((char*) resource->uri.s));
 	//TopicDataPtr temp = cloneTopic(&topicDB, resource->uri.s);
 	/* It should never have this condition, ever. Just in Case. */
 	/* Not Found */
+	TopicDataPtr temp = topic_db.copy_topic(std::string((char*) resource->uri.s));
 	if (temp == nullptr ) {
-		response->hdr->code 	= COAP_RESPONSE_CODE(404);
-		coap_add_data(response, strlen(coap_response_phrase(response->hdr->code)),(unsigned char *)coap_response_phrase(response->hdr->code));
+		response_pdu.add_response_data(COAP_RESPONSE_CODE(404));
 		return;
 	}
 	/* Not Found */
 
-	if(status || is_observe_notification_response){
+	if(broker::sub::handler::get::is_ct_valid(current_resource, request_pdu) || broker::sub::handler::get::is_observe_notify_response(current_resource, peer_addr, token_data, request_pdu)){
 	
 		/* No Content */
 		if (temp == nullptr){
-			if (coap_find_observer(resource, peer, token)) {
-				coap_add_option(response, COAP_OPTION_OBSERVE, coap_encode_var_bytes(buf, ctx->observe), buf);
+			if (current_resource.is_observer_exist(peer_addr, token_data)) {
+				response_pdu.add_option(Option(COAP_OPTION_OBSERVE, Option::encode_data(broker_ctx.get_obs_value())));
 			}
-			coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, ct_attr_value), buf);
-			response->hdr->code 	= COAP_RESPONSE_CODE(204);
-			coap_add_data(response, strlen("No Content"),(unsigned char *)"No Content");
-			//freeTopic(temp);  already using shared_ptr
+			response_pdu.add_option(Option(COAP_OPTION_CONTENT_TYPE, Option::encode_data(ct_attr_value)));
+			response_pdu.add_response_data(COAP_RESPONSE_CODE(204), UString("No Content"));
 			return;
 		}
 		/* No Content */
 		
 		/* No Content || Content */
 		else {
-			if (coap_find_observer(resource, peer, token)) {
-				coap_add_option(response, COAP_OPTION_OBSERVE, coap_encode_var_bytes(buf, ctx->observe), buf);
+			if (current_resource.is_observer_exist(peer_addr, token_data)) {
+				response_pdu.add_option(Option(COAP_OPTION_OBSERVE, Option::encode_data(broker_ctx.get_obs_value())));
 			}		
 			time_t remaining_maxage_time = temp->get_data_ma() - time(NULL);
 			if (remaining_maxage_time < 0 && !(temp->get_data_ma() == 0)){
-				coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, ct_attr_value), buf);
-				response->hdr->code 	= COAP_RESPONSE_CODE(204);
-				coap_add_data(response, strlen("No Content"),(unsigned char *)"No Content");
+				response_pdu.add_option(Option(COAP_OPTION_CONTENT_TYPE, Option::encode_data(ct_attr_value)));
+				response_pdu.add_response_data(COAP_RESPONSE_CODE(204), UString("No Content"));
 				//freeTopic(temp);  already using shared_ptr
 				return;
 			}
 			else{
-				response->hdr->code 	= COAP_RESPONSE_CODE(205);
-				coap_add_option(response, COAP_OPTION_CONTENT_TYPE, coap_encode_var_bytes(buf, ct_attr_value), buf);
 				if ((!(temp->get_data_ma() == 0))){
-					printf("Current time   : %ld\n",time(NULL));
-					printf("Expired time   : %ld\n",temp->get_data_ma());
-					printf("Remaining time : %ld\n",temp->get_data_ma() - time(NULL));
-					coap_add_option(response, COAP_OPTION_MAXAGE,coap_encode_var_bytes(buf, remaining_maxage_time), buf);
-				} 
-				coap_add_data(response, strlen(temp->get_data().c_str()), (unsigned char*)temp->get_data().c_str());
-				//freeTopic(temp);  already using shared_ptr
+					debug("Current time   : %ld\n",time(NULL));
+					debug("Expired time   : %ld\n",temp->get_data_ma());
+					debug("Remaining time : %ld\n",temp->get_data_ma() - time(NULL));
+					response_pdu.add_option(Option(COAP_OPTION_MAXAGE, Option::encode_data(remaining_maxage_time)));
+				}
+				response_pdu.add_option(Option(COAP_OPTION_CONTENT_TYPE, Option::encode_data(ct_attr_value)));
+				response_pdu.add_response_data(COAP_RESPONSE_CODE(205),UString(temp->get_data().c_str()));
 				return;
 			}
 		}
@@ -648,7 +660,7 @@ void BrokerResource::hnd_delete_topic(coap_context_t *ctx ,
 
 
 
-void BrokerResource::topicDataMAMonitor(coap_context_t** global_ctx){
+void BrokerResource::topicDataMAMonitor(){
 	
 	TopicDataPtr currentPtr = topic_db.get_head();
 	time_t master_time = time(NULL);
@@ -707,7 +719,7 @@ void BrokerResource::topicDataMAMonitor(coap_context_t** global_ctx){
 	}
 }
 
-void BrokerResource::topicMAMonitor(coap_context_t** global_ctx){
+void BrokerResource::topicMAMonitor(coap_context_t* global_ctx){
 	
 	TopicDataPtr currentPtr = topic_db.get_head();
 	time_t master_time = time(NULL);
@@ -737,7 +749,7 @@ void BrokerResource::topicMAMonitor(coap_context_t** global_ctx){
 			if (currentPtr->get_topic_ma() < currrent_time && currentPtr->get_topic_ma() != 0){
 				char* deleted_uri_topic = (char*) malloc(sizeof(char) * ((currentPtr->get_path().length())+2));
 				sprintf(deleted_uri_topic, "%s", currentPtr->get_path().c_str());
-				RESOURCES_ITER((*global_ctx)->resources, r) {
+				RESOURCES_ITER((global_ctx)->resources, r) {
 					if (compareString((char*)r->uri.s, deleted_uri_topic)){
 						currentPtr->data_unlock();
 						currentPtr->node_unlock();
@@ -745,7 +757,7 @@ void BrokerResource::topicMAMonitor(coap_context_t** global_ctx){
 						//topicNodeUnlock(currentPtr);
 						//if (deleteTopic(&topicDB, r->uri.s)){
 						if (topic_db.delete_topic(std::string((char*)r->uri.s))){
-							RESOURCES_DELETE((*global_ctx)->resources, r);
+							RESOURCES_DELETE((global_ctx)->resources, r);
 							coapFreeResource(r);
 							break;
 						} 

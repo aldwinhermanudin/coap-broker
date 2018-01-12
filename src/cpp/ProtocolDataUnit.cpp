@@ -80,6 +80,13 @@ namespace coap{
         return result;
     }
 
+    bool ProtocolDataUnit::is_empty(){
+        if (pdu_ == NULL){
+            return true;
+        }
+        return false;
+    }
+
     void ProtocolDataUnit::delete_pdu(ProtocolDataUnit pdu){
         coap_delete_pdu(pdu.get_pdu());
     }
