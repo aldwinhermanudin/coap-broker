@@ -238,10 +238,10 @@ namespace coap{
 		}
 	}
 
-
-TopicDB     BrokerResource::topic_db;
-time_t      BrokerResource::earliest_topic_max_age = LONG_MAX;
-time_t		BrokerResource::earliest_data_max_age = LONG_MAX;
+coap_context_t 	*BrokerResource::ctx_;
+TopicDB   	 	 BrokerResource::topic_db;
+time_t   		 BrokerResource::earliest_topic_max_age = LONG_MAX;
+time_t			 BrokerResource::earliest_data_max_age = LONG_MAX;
 
 BrokerResource::BrokerResource(coap::UString name) : Resource(name, COAP_RESOURCE_FLAGS_RELEASE_URI){
 	register_handler(COAP_REQUEST_GET, hnd_get_broker);
@@ -261,6 +261,7 @@ BrokerResource::hnd_get_broker(coap_context_t *ctx, struct coap_resource_t *reso
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
               coap_pdu_t *request, str *token, coap_pdu_t *response) 
 {	
+	register_context(ctx);
 	unsigned char 				buf[3];
 	int 						requested_query = 0;
 	int 						requested_link_format_counter = 0;
@@ -402,7 +403,8 @@ void
 BrokerResource::hnd_post_broker(coap_context_t *ctx, struct coap_resource_t *resource, 
               const coap_endpoint_t *local_interface, coap_address_t *peer, 
               coap_pdu_t *request, str *token, coap_pdu_t *response) 
-{
+{	
+	register_context(ctx);
 	//coap::HandlerData handler_data(ctx, resource, local_interface, peer, request, token, response);
 	coap::Server broker_ctx(ctx);
 	coap::Resource parent_resource(resource);
@@ -472,12 +474,10 @@ void BrokerResource::hnd_get_topic(coap_context_t *ctx, struct coap_resource_t *
 	ProtocolDataUnit response_pdu(response);
 
 	int ct_attr_value = std::stoi(current_resource.find_attribute(UString("ct")).get_value().get_string());
-	/* to get max_age value and observe*/
 
 	Address peer_addr(peer);
 	UString token_data(token->s, token->length);
 	 
-
 	/* Unsupported Content Format */
 	if ( broker::sub::handler::get::is_uscf(current_resource, peer_addr, token_data, request_pdu)){
 	
@@ -658,9 +658,12 @@ void BrokerResource::hnd_delete_topic(coap_context_t *ctx ,
 	debug(" Counter : %d\n",counter);
 }
 
+void BrokerResource::register_context(coap_context_t *ctx){
+	ctx_ = ctx;
+}
 
 
-void BrokerResource::topicDataMAMonitor(){
+void BrokerResource::topic_data_ma_monitor(){
 	
 	TopicDataPtr currentPtr = topic_db.get_head();
 	time_t master_time = time(NULL);
@@ -673,12 +676,10 @@ void BrokerResource::topicDataMAMonitor(){
 			
 		time_t next_earliest_data_ma = LONG_MAX;
 		while ( currentPtr != nullptr ) {
-			currentPtr->node_r_lock(); 
-			//topicNodeRLock(currentPtr);
+			currentPtr->node_r_lock();  
 			TopicDataPtr nextPtr = currentPtr->nextPtr;
 			
-			currentPtr->data_r_lock();
-			//topicDataRLock(currentPtr);
+			currentPtr->data_r_lock(); 
 			if(currentPtr->get_data_ma() != 0 && currentPtr->get_data_ma() != earliest_data_max_age && currentPtr->get_data_ma() < next_earliest_data_ma){
 				next_earliest_data_ma = currentPtr->get_data_ma();
 			}
@@ -689,17 +690,12 @@ void BrokerResource::topicDataMAMonitor(){
 			
 			if(currentPtr->get_data_ma() < currrent_time && currentPtr->get_data_ma() != 0){
 				currentPtr->data_unlock();
-				currentPtr->node_unlock();
-				//topicDataUnlock(currentPtr);				
-				//topicNodeUnlock(currentPtr);
-				topic_db.delete_topic(std::string(currentPtr->get_path()));
-				//deleteTopicData(&topicDB, currentPtr->path);
+				currentPtr->node_unlock(); 
+				topic_db.delete_topic(std::string(currentPtr->get_path())); 
 			}
 			else {				
 				currentPtr->data_unlock();
-				currentPtr->node_unlock();
-				//topicDataUnlock(currentPtr);				
-				//topicNodeUnlock(currentPtr);
+				currentPtr->node_unlock(); 
 			}
 			
 			currentPtr = nextPtr;   
@@ -719,7 +715,7 @@ void BrokerResource::topicDataMAMonitor(){
 	}
 }
 
-void BrokerResource::topicMAMonitor(coap_context_t* global_ctx){
+void BrokerResource::topic_ma_monitor(){
 	
 	TopicDataPtr currentPtr = topic_db.get_head();
 	time_t master_time = time(NULL);
@@ -749,15 +745,12 @@ void BrokerResource::topicMAMonitor(coap_context_t* global_ctx){
 			if (currentPtr->get_topic_ma() < currrent_time && currentPtr->get_topic_ma() != 0){
 				char* deleted_uri_topic = (char*) malloc(sizeof(char) * ((currentPtr->get_path().length())+2));
 				sprintf(deleted_uri_topic, "%s", currentPtr->get_path().c_str());
-				RESOURCES_ITER((global_ctx)->resources, r) {
+				RESOURCES_ITER((BrokerResource::ctx_)->resources, r) {
 					if (compareString((char*)r->uri.s, deleted_uri_topic)){
 						currentPtr->data_unlock();
 						currentPtr->node_unlock();
-						//topicDataUnlock(currentPtr);
-						//topicNodeUnlock(currentPtr);
-						//if (deleteTopic(&topicDB, r->uri.s)){
 						if (topic_db.delete_topic(std::string((char*)r->uri.s))){
-							RESOURCES_DELETE((global_ctx)->resources, r);
+							RESOURCES_DELETE((BrokerResource::ctx_)->resources, r);
 							coapFreeResource(r);
 							break;
 						} 

@@ -38,7 +38,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(CoAPBrokerCPP src/cpp/main/coap-broker.cpp ${CPP_SOURCES})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX")
 target_link_libraries(CoAPBrokerCPP
-  ${COAP_LIBRARY}
+coap-1
   ${Boost_LIBRARIES}
   pthread
 ) 
@@ -46,7 +46,7 @@ target_link_libraries(CoAPBrokerCPP
 add_executable(experimental src/cpp/main/experimental.cpp ${CPP_SOURCES})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I /usr/local/include/coap/ -O2 -D_GNU_SOURCE -DWITH_POSIX")
 target_link_libraries(experimental
-  ${COAP_LIBRARY}
+coap-1
   ${Boost_LIBRARIES}
   pthread
 ) 

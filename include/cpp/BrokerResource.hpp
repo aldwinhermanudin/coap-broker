@@ -54,6 +54,7 @@ class BrokerResource : public Resource{
     
     public:
         /* Global variable */
+        static coap_context_t *ctx_;
         static TopicDB      topic_db;
         static time_t       earliest_topic_max_age;
         static time_t		earliest_data_max_age;
@@ -98,8 +99,9 @@ class BrokerResource : public Resource{
                         str *token ,
                         coap_pdu_t *response );
 
-        void topicDataMAMonitor();
-        void topicMAMonitor(coap_context_t* global_ctx);
+        static void register_context(coap_context_t *ctx);
+        void topic_data_ma_monitor();
+        void topic_ma_monitor();
 
     public:
 
